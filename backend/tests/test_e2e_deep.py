@@ -17,6 +17,8 @@ def run(c, scenario: str, variant: str = "A") -> tuple[dict, str]:
     assert r.status_code == 202, r.text
     d = wait_drill_idle(c, r.json()["id"])
     assert d["status"] == "COMPLETED", d
+    incs = [i for i in c.get("/incidents?page_size=50").json()["items"] if i["drill_id"] == d["id"]]
+    assert len(incs) == 1, f"exactly one incident expected, got {[i['exposure_type'] for i in incs]}"
     return d, d["incident_id"]
 
 

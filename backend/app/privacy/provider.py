@@ -18,8 +18,11 @@ SYSTEM = ("You write short, factual decision summaries for a data-privacy incide
           "provided. Do not speculate, do not invent numbers, deadlines or legal conclusions. Two sentences max.")
 
 
+OVERRIDE: str | None = None  # set only by the benchmark's deterministic-vs-LLM comparison
+
+
 def active_name() -> str:
-    return settings().llm_provider or "local"
+    return OVERRIDE or settings().llm_provider or "local"
 
 
 def model_name() -> str | None:

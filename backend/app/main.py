@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import internal
-from .api.v1 import actions, auth, drills, incidents, overview
+from .api.v1 import actions, auth, benchmarks, drills, incidents, overview
 from .core import errors
 from .core.config import settings
 
@@ -40,7 +40,7 @@ errors.install(app)
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings().cors_origins.split(",")],
                    allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["content-type"])
 
-for r in (auth.router, incidents.router, drills.router, actions.router, overview.router):
+for r in (auth.router, incidents.router, drills.router, actions.router, overview.router, benchmarks.router):
     app.include_router(r, prefix="/api/v1")
 app.include_router(overview.public, prefix="/api/v1")
 app.include_router(internal.router)

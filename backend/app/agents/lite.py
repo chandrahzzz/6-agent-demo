@@ -51,11 +51,21 @@ def lite_verdict(ev: dict) -> tuple[str, list[str]]:
 def create_incidents(ctx: Ctx, found: list[dict]) -> list[str]:
     ids = []
     with session_scope() as db:
-        open_keys = {(i.scope or {}).get("key") for i in db.execute(select(Incident).where(Incident.exposure_type.like("LITE:%"),
-                                                                                           Incident.status != "CLOSED")).scalars()}
+        open_incs = db.execute(select(Incident).where(Incident.status != "CLOSED")).scalars().all()
+        open_keys = {(i.scope or {}).get("key") for i in open_incs if i.exposure_type.startswith("LITE:")}
+        covered = {f"s3://{o}": i for i in open_incs if not i.exposure_type.startswith("LITE:")
+                   for o in (i.scope or {}).get("objects", [])}
         for f in found:
             key = f"{f['check']}|{f['asset_ref']}"
             if key in open_keys:
+                continue
+            if f["asset_ref"] in covered:
+                # Correlate, don't duplicate: the object is already part of an open (deep) incident.
+                db.add(Finding(incident_id=covered[f["asset_ref"]].id, drill_id=ctx.drill_id, asset_ref=f["asset_ref"],
+                               detector=f"lite:{f['check']}", finding_type=f"RELATED:{f['check']}", title=f["title"],
+                               severity="Info", suppressed=False, data_categories=f["data_categories"],
+                               record_count=sum(f["data_categories"].values()) or None, masked_samples={}, details=f["evidence"],
+                               confidence=0.95))
                 continue
             inc = Incident(ref=next_incident_ref(db), drill_id=ctx.drill_id, exposure_type=f"LITE:{f['check']}", severity=f["severity"],
                            title=f"{f['check'].replace('-', ' ').title()}: {f['title']}", summary=f["title"],

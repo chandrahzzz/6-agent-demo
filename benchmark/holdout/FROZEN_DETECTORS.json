@@ -1,0 +1,10 @@
+{
+ "tag": "detectors-v1",
+ "note": "SHA-256 of detector code at tag detectors-v1. The held-out set is only reported as held-out while these match.",
+ "sha256": {
+  "detectors.py": "76a98acc661f8a7dda643e08d363f3bea14b81e70e7fea2db627d1e67d62f54e",
+  "verhoeff.py": "31dd0ae9727ff399ba3a96dc2ef132b7c0c27f95446f868260d7b9668827c834",
+  "masking.py": "f92f0b5a5f370664881c3865c4e4ad8b9c7878416a59e8f72c7be8cd84f52982",
+  "fingerprint.py": "b52455d2c50edb44533ea3ad5edb28ba26a215ea95cfdb854d4921621cd794b1"
+ }
+}

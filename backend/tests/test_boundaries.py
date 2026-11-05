@@ -35,7 +35,7 @@ def test_ground_truth_import_boundary():
         for f in (APP / pkg).rglob("*.py"):
             src = f.read_text(encoding="utf-8")
             for imp in _imports(f):
-                if "ground_truth" in imp or imp.startswith("benchmark"):
+                if "ground_truth" in imp or imp.startswith(("benchmark", "synth", "bench_support", "mallya_worker")):
                     offenders.append(f"{f.relative_to(APP)} -> {imp}")
             if "ground_truth" in src:
                 offenders.append(f"{f.relative_to(APP)} mentions ground_truth")

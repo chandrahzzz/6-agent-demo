@@ -212,7 +212,7 @@ services:
       APP_ENV: ${APP_ENV}
       DEMO_MODE: ${DEMO_MODE}
       SEED: ${SEED}
-      PYTHONPATH: /app/shared:/app/backend
+      PYTHONPATH: /app/shared:/app/backend:/app
       WATCHFILES_FORCE_POLLING: "true"
       DATABASE_URL: postgresql+psycopg://mallya_app:${MALLYA_DB_PASSWORD}@postgres:5432/mallya
       REDIS_URL: redis://redis:6379/0
@@ -239,6 +239,8 @@ services:
       - ./backend:/app/backend
       - ./shared:/app/shared:ro
       - ./benchmark:/app/benchmark
+      # benchmark harness only: the deterministic data generator, to compute ground truth for what it planted
+      - ./worker/mallya_worker/synth.py:/app/bench_support/synth.py:ro
       - ./policies:/app/policies:ro
       - ./tools:/app/tools:ro
       - ./docs:/app/docs
