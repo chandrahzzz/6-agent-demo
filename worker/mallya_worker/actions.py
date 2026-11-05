@@ -50,11 +50,38 @@ def _ensure_ledger() -> None:
 
 # ------------------------------------------------------------------ action templates
 def a_bucket_set_private(p: dict) -> dict:
-    before = storage.get_anonymous(p["bucket"])
-    if before == "none":
-        return {"changed": False, "before": before, "after": "none", "note": "already private (idempotent no-op)"}
-    storage.set_anonymous("mallya-remediator", p["bucket"], "none")
-    return {"changed": True, "before": before, "after": storage.get_anonymous(p["bucket"])}
+    """Remove anonymous access from a bucket, or from one prefix when `prefix` is given."""
+    bucket, prefix = p["bucket"], (p.get("prefix") or "").strip("/")
+    rules = storage.anonymous_rules(bucket)
+    targets = [r for r in rules if (r["prefix"].rstrip("/") == prefix if prefix else True)]
+    if not targets:
+        return {"changed": False, "before": rules, "after": rules, "note": "no matching anonymous grant (idempotent no-op)"}
+    for r in targets:
+        t = f"{bucket}/{r['prefix'].rstrip('/')}" if r["prefix"] else bucket
+        storage.set_anonymous("mallya-remediator", t, "none")
+    return {"changed": True, "before": [f"{bucket}/{r['prefix']}* {r['allow']}" for r in rules],
+            "after": [f"{bucket}/{r['prefix']}* {r['allow']}" for r in storage.anonymous_rules(bucket)] or "none"}
+
+
+def a_enable_consent_filter(p: dict) -> dict:
+    n = meridian.execute("UPDATE integration_jobs SET filter_withdrawn_consent = TRUE WHERE job_id = :j AND NOT filter_withdrawn_consent",
+                         j=p["job_id"])
+    return {"changed": n > 0, "job_id": p["job_id"], "filter_withdrawn_consent": True}
+
+
+def a_block_vendor(p: dict) -> dict:
+    """Record the unapproved vendor as BLOCKED in the integration registry (egress governance)."""
+    exists = meridian.query("SELECT blocked FROM integration_registry WHERE integration_id = :i", i=p["integration_id"])
+    if exists and exists[0]["blocked"]:
+        return {"changed": False, "note": "already blocked"}
+    if exists:
+        meridian.execute("UPDATE integration_registry SET blocked = TRUE, approved = FALSE WHERE integration_id = :i", i=p["integration_id"])
+    else:
+        meridian.execute("""INSERT INTO integration_registry (integration_id, vendor, purpose, endpoint, approved, is_ai_tool,
+            data_categories, granted_scopes, required_scopes, credential_expires_at, ropa_ref, blocked)
+            VALUES (:i, :v, 'UNAPPROVED - blocked by MALLYA remediation', :e, FALSE, TRUE, '', '', '', NULL, NULL, TRUE)""",
+                         i=p["integration_id"], v=p["vendor"], e=p.get("endpoint", ""))
+    return {"changed": True, "integration_id": p["integration_id"], "blocked": True}
 
 
 def a_infra_patch_private(p: dict) -> dict:
@@ -63,6 +90,8 @@ def a_infra_patch_private(p: dict) -> dict:
         sync = infra.sync("infra-sync")
         return {"changed": False, "note": "buckets.yaml already declares bucket private", "sync": sync}
     new_text = infra.set_public(bucket, False)
+    if p.get("reclassify"):
+        new_text = infra.set_classification(bucket, p["reclassify"], new_text)
     diff = infra.unified_diff("buckets.yaml", new_text)
     sha = infra.commit(infra.AUTHORS["mallya"], datetime.now(timezone.utc),
                        f"{p.get('action_id', 'MALLYA')}: make {bucket} private ({p.get('incident_ref', '')})".strip(),
@@ -150,6 +179,8 @@ ACTIONS = {
     "vendor.delete_subjects": a_vendor_delete_subjects,
     "object.delete": a_delete_object,
     "vendor.ai_delete_uploads": a_vendor_ai_delete,
+    "integration.enable_consent_filter": a_enable_consent_filter,
+    "integration.block_vendor": a_block_vendor,
 }
 
 

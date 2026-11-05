@@ -54,6 +54,12 @@ PRINCIPALS = {
                                                      "s3:GetObject", "s3:PutObject"],
                         "Resource": ["arn:aws:s3:::meridian-*"]}],
     },
+    "finance-analyst": {
+        "kind": "human", "description": "Finance analytics analyst (meera.s team)",
+        "statements": [{"Effect": "Allow", "Action": ["s3:PutBucketPolicy", "s3:GetBucketPolicy", "s3:GetObject", "s3:PutObject",
+                                                     "s3:ListBucket", "s3:GetBucketLocation"],
+                        "Resource": ["arn:aws:s3:::meridian-exports", "arn:aws:s3:::meridian-exports/*"]}],
+    },
     "reporting-service": {
         "kind": "service", "description": "Nightly regulatory reporting job (authorised consumer of backups)",
         "statements": [{"Effect": "Allow", "Action": ["s3:GetObject", "s3:ListBucket"],
@@ -101,9 +107,25 @@ def mc(principal: str, *args: str) -> list[dict]:
     return out
 
 
-def set_anonymous(principal: str, bucket: str, permission: str) -> None:
+def set_anonymous(principal: str, target: str, permission: str) -> None:
+    """target is a bucket or bucket/prefix."""
     assert permission in ("download", "none")
-    mc(principal, "anonymous", "set", permission, f"m/{bucket}")
+    mc(principal, "anonymous", "set", permission, f"m/{target}")
+
+
+def anonymous_rules(bucket: str) -> list[dict]:
+    """Every anonymous grant on the bucket, including prefix-scoped ones (`mc anonymous list`).
+    Returns [{"prefix": "" | "shared/", "allow": "readonly" | ...}]."""
+    out = []
+    for r in mc("mallya-scanner", "anonymous", "list", f"m/{bucket}"):
+        res = r.get("resource", "")
+        prefix = res[len(bucket):].lstrip("/").rstrip("*")
+        out.append({"prefix": prefix, "allow": r.get("allow")})
+    return out
+
+
+def object_public(key: str, rules: list[dict]) -> bool:
+    return any(r["allow"] in ("readonly", "readwrite", "download", "public") and key.startswith(r["prefix"]) for r in rules)
 
 
 def get_anonymous(bucket: str) -> str:

@@ -45,7 +45,7 @@ def _register_iam(now: datetime) -> None:
         body = {"name": name, "kind": p["kind"], "description": p["description"], "access_key": name,
                 "permissions": perms, "approved": True,
                 "credential_expires_at": (now + timedelta(days=90)).isoformat()}
-        if name == "reporting-service":
+        if name in ("reporting-service", "finance-analyst"):  # legitimate consumers the verifier tests
             body["secret_key"] = storage.secret_for(name)  # mock IAM may mint presigned URLs for it
         iam("PUT", f"/principals/{name}", json=body)
     iam("PUT", "/principals/northwind-analytics", json={

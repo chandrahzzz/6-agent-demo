@@ -25,7 +25,7 @@ LITE_IDS = ["UNENCRYPTED-STORAGE", "EXCESSIVE-DB-PERMISSIONS", "EXPOSED-POSTGRES
             "MISSING-ROPA-ENTRY", "UNREVIEWED-DATA-RETENTION", "UNAPPROVED-AI-VENDOR", "AI-TRAINING-DATA-LEAK",
             "SHARED-DRIVE-EXPOSURE"]
 LITE = [{"id": i, "name": i, "tier": "lite", "description": "", "hard_part": "", "variants": {}} for i in LITE_IDS]
-IMPLEMENTED = {"HERO-01"}
+IMPLEMENTED = {"HERO-01", "D-02", "D-03", "D-04", "D-05"}
 
 
 def all_scenarios() -> list[dict]:

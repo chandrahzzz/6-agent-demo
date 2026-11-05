@@ -144,6 +144,17 @@ def set_public(bucket: str, public: bool) -> str:
     return "".join(out)
 
 
+def set_classification(bucket: str, classification: str, text: str) -> str:
+    out, in_block = [], False
+    for line in text.splitlines(keepends=True):
+        if line.startswith("  - name: "):
+            in_block = line.strip() == f"- name: {bucket}"
+        if in_block and line.strip().startswith("classification:"):
+            line = f"    classification: {classification}\n"
+        out.append(line)
+    return "".join(out)
+
+
 def unified_diff(path: str, new_text: str) -> str:
     old = (repo() / path).read_text()
     return "".join(difflib.unified_diff(old.splitlines(keepends=True), new_text.splitlines(keepends=True),
@@ -242,10 +253,12 @@ def check_reapply(bad_sha: str) -> dict:
         env = {"GIT_AUTHOR_NAME": "mallya-regression", "GIT_AUTHOR_EMAIL": "regression@mallya.test",
                "GIT_COMMITTER_NAME": "mallya-regression", "GIT_COMMITTER_EMAIL": "regression@mallya.test"}
         try:
-            _git("cherry-pick", "--strategy=recursive", "-X", "theirs", bad_sha, env=env, cwd=scratch)
+            _git("cherry-pick", bad_sha, env=env, cwd=scratch)  # a conflict falls back to re-applying only the bad change
             reapplied = True
         except RuntimeError:
-            # A conflict-free re-application isn't possible; re-apply the bad change textually instead.
+            # A conflict-free re-application isn't possible (the fix touched the same lines). Abort and
+            # re-apply only the bad change (its public: true flips) on top of the fixed config.
+            subprocess.run(["git", "cherry-pick", "--abort"], cwd=scratch, capture_output=True, timeout=30)
             reapplied = False
         text = (scratch / "buckets.yaml").read_text()
         if not reapplied:

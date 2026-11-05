@@ -17,7 +17,8 @@ INCONCLUSIVE = {"DNS_FAILURE", "CONNECTION_REFUSED", "CONNECTION_ERROR", "TIMEOU
 
 
 def decide(*, original_probes: list[dict], copy_probes: list[dict], copy_hunt: list[dict],
-           authorised: list[dict], evidence_recorded: bool, verifier_ok: bool = True) -> dict:
+           authorised: list[dict], evidence_recorded: bool, verifier_ok: bool = True,
+           authorised_required: bool = True) -> dict:
     reasons: list[str] = []
     residual: list[str] = []
     if not verifier_ok:
@@ -30,7 +31,7 @@ def decide(*, original_probes: list[dict], copy_probes: list[dict], copy_hunt: l
     copy_inconclusive = [p for p in copy_probes if p["outcome"] in INCONCLUSIVE]
     unverified_locations = [c for c in copy_hunt if not c.get("checked")]
     unaccounted = [c for c in copy_hunt if c.get("present") and c.get("accessible") is None]
-    auth_ok = bool(authorised) and all(a["outcome"] == "ACCESSIBLE" for a in authorised)
+    auth_ok = (bool(authorised) and all(a["outcome"] == "ACCESSIBLE" for a in authorised)) if authorised_required else True
 
     for p in orig_open:
         reasons.append(f"{p['method']} {p['path']} -> {p['status']}" + (" (served from CDN cache)" if p.get("served_from_cache") else ""))

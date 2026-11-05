@@ -33,7 +33,7 @@ CREATE TABLE integration_registry (
   integration_id TEXT PRIMARY KEY, vendor TEXT NOT NULL, purpose TEXT NOT NULL, endpoint TEXT NOT NULL,
   approved BOOLEAN NOT NULL, is_ai_tool BOOLEAN NOT NULL DEFAULT FALSE, data_categories TEXT NOT NULL,
   granted_scopes TEXT NOT NULL, required_scopes TEXT NOT NULL, credential_expires_at TIMESTAMPTZ,
-  ropa_ref TEXT);
+  ropa_ref TEXT, blocked BOOLEAN NOT NULL DEFAULT FALSE);
 CREATE TABLE integration_jobs (
   job_id TEXT PRIMARY KEY, integration_id TEXT NOT NULL, source_table TEXT NOT NULL, enabled BOOLEAN NOT NULL,
   last_run_at TIMESTAMPTZ, filter_withdrawn_consent BOOLEAN NOT NULL DEFAULT FALSE);

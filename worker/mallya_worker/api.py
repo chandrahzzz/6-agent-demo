@@ -13,7 +13,7 @@ import os
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from . import actions, infra, meridian, scan, scenarios, seed, storage
+from . import actions, checks, infra, meridian, scan, scenarios, seed, storage
 from .clients import cdn_admin, iam, vendor
 from .config import settings
 
@@ -118,14 +118,20 @@ def inventory() -> dict:
         except Exception:  # noqa: BLE001
             tags = {}
         anon = storage.get_anonymous(name)
+        rules = storage.anonymous_rules(name)
+        for o in objs:
+            o["public"] = storage.object_public(o["key"], rules)
         declared = cfg.get(name)
         canary = next((o for o in objs if o["key"] == seed.CANARY_KEY), None)
+        bucket_public = any(r["prefix"] == "" for r in rules)
         buckets.append({
-            "name": name, "anonymous": anon, "public": anon in ("download", "public"),
+            "name": name, "anonymous": anon, "public": bucket_public, "anonymous_rules": rules,
+            "has_public_objects": any(o["public"] for o in objs),
             "classification": (declared or {}).get("classification") or tags.get("classification"),
             "declared_in_config": declared is not None,
             "declared_public": bool((declared or {}).get("public")) if declared else None,
-            "drift": declared is not None and bool(declared.get("public")) != (anon in ("download", "public")),
+            "drift": declared is not None and (bool(declared.get("public")) != bucket_public
+                                                or (not declared.get("public") and any(r["prefix"] for r in rules))),
             "replicate_to": (declared or {}).get("replicate_to"), "replica_of": (declared or {}).get("replica_of"),
             "encryption_declared": (declared or {}).get("encryption"),
             "objects": [o for o in objs if not o["key"].startswith("_mallya_canary/")],
@@ -238,9 +244,28 @@ def git_show(sha: str) -> dict:
 
 
 @app.get("/infra/patch-preview", dependencies=A)
-def patch_preview(bucket: str) -> dict:
-    return {"path": "buckets.yaml", "diff": infra.unified_diff("buckets.yaml", infra.set_public(bucket, False)),
+def patch_preview(bucket: str, reclassify: str | None = None) -> dict:
+    text = infra.set_public(bucket, False)
+    if reclassify:
+        text = infra.set_classification(bucket, reclassify, text)
+    return {"path": "buckets.yaml", "diff": infra.unified_diff("buckets.yaml", text),
             "declared_public": bucket in infra.current_buckets_public(), "gates": infra.enabled_gates()}
+
+
+@app.get("/checks/consent-sync", dependencies=A)
+def check_consent(include_fingerprints: bool = False) -> list[dict]:
+    return checks.consent_sync(include_fingerprints)
+
+
+@app.get("/checks/egress", dependencies=A)
+def check_egress(include_fingerprints: bool = False) -> list[dict]:
+    return checks.egress(include_fingerprints)
+
+
+@app.post("/jobs/{job_id}/run", dependencies=A)
+def run_job(job_id: str) -> dict:
+    """Runs the real sync job (used by verification to attack the fix: does a re-sync leak again?)."""
+    return checks.run_sync(job_id)
 
 
 @app.get("/storage/anonymous/{bucket}", dependencies=A)

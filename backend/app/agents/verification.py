@@ -21,9 +21,14 @@ from .base import AgentOutput, Ctx
 from .blast_radius import known_locations
 
 CDN_HOST = "cdn://cdn.meridian.sandbox"
+INTERNAL_PRINCIPALS = {"infra-sync", "dev-rahul", "mallya-scanner", "mallya-remediator"}
 
 
 def verify(ctx: Ctx) -> AgentOutput:
+    with session_scope() as db:
+        etype = db.get(Incident, ctx.incident_id).exposure_type
+    if etype in ("CONSENT_MISMATCH", "SHADOW_AI_UPLOAD"):
+        return verify_vendor(ctx, etype)
     with session_scope() as db:
         inc = db.get(Incident, ctx.incident_id)
         inc.status = "VERIFYING"
@@ -64,11 +69,16 @@ def verify(ctx: Ctx) -> AgentOutput:
     for b, c in canaries.items():
         probes.append({"probe_id": f"canary-{b}", "kind": "anonymous_get", "path": f"/{b}/{c['key']}", "expect_sha256": c["sha256"]})
     authorised_targets = []
-    if primary and primary in canaries:
+    # The legitimate consumer of the primary bucket (if any) must keep working after the fix.
+    consumers = [p["name"] for p in connectors.worker("GET", "/iam/principals")
+                 if p["name"] not in INTERNAL_PRINCIPALS and p.get("access_key")
+                 and any(perm.get("bucket") == primary and "s3:GetObject" in perm.get("actions", []) for perm in p.get("permissions", []))]
+    consumer = consumers[0] if consumers else None
+    if primary and primary in canaries and consumer:
         try:
-            ps = connectors.iam("POST", "/presign", json={"principal": "reporting-service", "bucket": primary,
+            ps = connectors.iam("POST", "/presign", json={"principal": consumer, "bucket": primary,
                                                           "key": canaries[primary]["key"], "expires_seconds": 300})
-            probes.append({"probe_id": "authorised-reporting-service", "kind": "authorised_get", "url": ps["url"],
+            probes.append({"probe_id": "authorised-consumer", "principal": consumer, "kind": "authorised_get", "url": ps["url"],
                            "expect_sha256": canaries[primary]["sha256"]})
             authorised_targets.append(f"/{primary}/{canaries[primary]['key']}")
         except connectors.ConnectorError as exc:
@@ -110,7 +120,7 @@ def verify(ctx: Ctx) -> AgentOutput:
             r = {**r, "layer": "canary", "location_label": f"{b} (canary)"}
             edge_rows.append(r)
             (original_probes if b == primary else copy_probes).append(r)
-    authorised = [results["authorised-reporting-service"]] if "authorised-reporting-service" in results else []
+    authorised = [{**results["authorised-consumer"], "principal": consumer}] if "authorised-consumer" in results else []
 
     # B. copy hunt table --------------------------------------------------------
     db_unreachable = all(not c["reachable"] for c in net.get("checks", []) if c["target"].startswith(("postgres", "worker")))
@@ -149,7 +159,10 @@ def verify(ctx: Ctx) -> AgentOutput:
 
     result = vd.decide(original_probes=original_probes, copy_probes=copy_probes,
                        copy_hunt=[c for c in copy_hunt if c["kind"] != "vendor" or c["present"]],
-                       authorised=authorised, evidence_recorded=True, verifier_ok=verifier_ok)
+                       authorised=authorised, evidence_recorded=True, verifier_ok=verifier_ok,
+                       authorised_required=consumer is not None)
+    if consumer is None:
+        result["reasons"].append(f"no authorised consumer is registered for {primary}; legitimate-access check not applicable")
     v = result["verdict"]
     with session_scope() as db:
         run = db.get(VerificationRun, run_id)
@@ -184,3 +197,6 @@ def verify(ctx: Ctx) -> AgentOutput:
     return AgentOutput(summary=summary, confidence=0.97 if v in ("VERIFIED_FIXED", "PARTIALLY_FIXED", "STILL_EXPOSED") else 0.6,
                        evidence_refs=[f"verification:{run_ref}"],
                        data={"run_id": run_id, "run_ref": run_ref, "verdict": v, "residual": result["residual"]})
+
+
+from .verification_vendor import verify_vendor  # noqa: E402  (vendor-type branch)

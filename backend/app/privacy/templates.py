@@ -23,6 +23,14 @@ def hunter(f: dict) -> str:
 def investigation(f: dict) -> str:
     v = f.get("verdict")
     ext = f.get("external", {})
+    if f.get("channel") == "vendor_upload" and v == "LIKELY_EXFILTRATED":
+        s = (f"{_n(ext.get('bytes_served_real_object', 0))} bytes containing customer identifiers were uploaded to an unapproved "
+             f"third-party AI tool ({_plural(ext.get('successful_downloads', 0), 'upload')}).")
+        return (s + (f" Root cause: {f['root_cause']}." if f.get("root_cause") else "")).strip()
+    if f.get("channel") == "vendor_sync":
+        s = "Data went only to the approved processor; no unknown external access."
+        s += f" {f['partner_access']}." if f.get("partner_access") else ""
+        return (s + (f" Root cause: {f['root_cause']}." if f.get("root_cause") else "")).strip()
     s = {
         "LIKELY_EXFILTRATED": f"{_n(ext.get('bytes_served_real_object', 0))} bytes of the real object were served to an external origin "
                               f"({_plural(ext.get('successful_downloads', 0), 'successful download')}).",
@@ -61,6 +69,9 @@ def remediation(f: dict) -> str:
 
 def verification(f: dict) -> str:
     v = f.get("verdict")
+    if v == "VERIFIED_FIXED" and f.get("mode") == "vendor":
+        return ("A forced re-run and a keyed-fingerprint re-query found 0 affected subjects at the vendor, the root-cause control "
+                "is in place, and legitimate flows are unaffected.")
     if v == "VERIFIED_FIXED":
         return (f"All {_plural(f.get('external_blocked', 0), 'external path')} returned a genuine 403, every fingerprint match is "
                 "protected, and the authorised consumer still gets 200.")

@@ -17,7 +17,8 @@ from ..core import events
 from ..core.db import session_scope
 from ..evidence import chain
 from ..investigation.verdict import classify_ip
-from ..models import (AccessEvent, Approval, Finding, Incident, Investigation, RemediationAction, VerificationRun, now)
+from ..models import (AccessEvent, Approval, Finding, Incident, Investigation, RemediationAction, SubjectSet,
+                      VerificationRun, now)
 from ..remediation.approvals import mint
 from .base import AgentOutput, Ctx
 
@@ -76,6 +77,11 @@ def plan(ctx: Ctx) -> AgentOutput:
         causes = {c["bucket"]: c for c in (inv.root_cause if inv else [])}
         buckets = list((inc.scope or {}).get("buckets", []))
         ref = inc.ref
+        etype, scope = inc.exposure_type, dict(inc.scope or {})
+        classes = {f.details["bucket"]: f.details.get("classification") for f in fnds}
+    if etype in ("CONSENT_MISMATCH", "SHADOW_AI_UPLOAD"):
+        return plan_vendor(ctx, etype, scope)
+    prefixes = {x.split("/", 1)[0]: x.split("/", 1)[1] for x in scope.get("prefixes", [])}
     networks = connectors.worker("GET", "/iam/networks")
     held, proposed = [], 0
     with session_scope() as db:
@@ -100,6 +106,15 @@ def plan(ctx: Ctx) -> AgentOutput:
                              "expires_seconds": 86400},
                      approval_status="HELD")
                 held.append(f"{b} is used anonymously by {dep['origin']}")
+            elif b in prefixes:
+                _add(db, ctx.incident_id, 1, action_type="bucket.set_private", target=f"s3://{b}/{prefixes[b]}",
+                     problem=f"Anonymous read grant on prefix {b}/{prefixes[b]}* (a public link created outside infra-config)",
+                     change=f"`mc anonymous set none {b}/{prefixes[b].rstrip('/')}` (revoke the public link only)",
+                     risk="Low: no consumer depends on the anonymous link (safety check)",
+                     side_effects="Anyone holding the link loses access; named users keep their own credentials",
+                     expected_outcome=f"Anonymous requests under {b}/{prefixes[b]} receive 403",
+                     rollback_plan=f"`mc anonymous set download {b}/{prefixes[b].rstrip('/')}` (re-opens exposure)",
+                     verification_requirement=req, safety=safety, params={"bucket": b, "prefix": prefixes[b]})
             else:
                 _add(db, ctx.incident_id, 1, action_type="bucket.set_private", target=f"s3://{b}",
                      problem=f"{b} allows anonymous download", change=f"`mc anonymous set none {b}` (live fix)",
@@ -109,7 +124,8 @@ def plan(ctx: Ctx) -> AgentOutput:
                      verification_requirement=req, safety=safety, params={"bucket": b})
             proposed += 1
             if rc.get("kind") == "CONFIG_COMMIT":
-                prev = connectors.worker("GET", "/infra/patch-preview", params={"bucket": b})
+                reclass = None if (classes.get(b) or "") in ("pii", "confidential", "restricted") else "confidential"
+                prev = connectors.worker("GET", "/infra/patch-preview", params={"bucket": b, **({"reclassify": reclass} if reclass else {})})
                 bad_commits.append(rc["commit"]["sha"])
                 _add(db, ctx.incident_id, 1, action_type="infra.patch_bucket_private", target="infra-config/buckets.yaml",
                      problem=f"buckets.yaml declares {b} public: true (commit {rc['commit']['sha'][:8]})",
@@ -117,7 +133,13 @@ def plan(ctx: Ctx) -> AgentOutput:
                      side_effects="infra-sync re-applies the bucket policy",
                      expected_outcome="Config and live state agree; a full re-sync cannot re-open the bucket",
                      rollback_plan="git revert the MALLYA commit", verification_requirement="buckets.yaml declares private; sync APPLIED",
-                     params={"bucket": b, "incident_ref": ref}, patch_diff=prev["diff"], safety={"result": "N/A (config only)"})
+                     params={"bucket": b, "incident_ref": ref, **({"reclassify": reclass} if reclass else {})},
+                     patch_diff=prev["diff"], safety={"result": "N/A (config only)"})
+                if reclass:
+                    a = db.execute(select(RemediationAction).where(RemediationAction.incident_id == ctx.incident_id)
+                                   .order_by(RemediationAction.created_at.desc())).scalars().first()
+                    a.problem += f"; bucket is classified '{classes.get(b)}' but holds customer identifiers"
+                    a.change = f"Commit the patch below (public: false, classification: {reclass}) and run infra-sync"
                 proposed += 1
         if bad_commits:
             _add(db, ctx.incident_id, 1, action_type="infra.enable_policy_gate", target="infra-config/.mallya/gates.yaml",
@@ -146,6 +168,18 @@ def replan(ctx: Ctx, run_id: str) -> AgentOutput:
         buckets = set((inc.scope or {}).get("buckets", []))
         probes = run.external_results
         new = 0
+        if inc.exposure_type in ("CONSENT_MISMATCH", "SHADOW_AI_UPLOAD"):
+            residual_vendor = [c for c in run.copy_hunt if c["kind"] == "vendor" and c.get("present")]
+            for c in residual_vendor:
+                fps = sorted({fp for s in db.execute(select(SubjectSet).where(SubjectSet.incident_id == inc.id)).scalars() for fp in s.fingerprints})
+                _add(db, inc.id, wave, action_type="vendor.delete_subjects" if inc.exposure_type == "CONSENT_MISMATCH" else "vendor.ai_delete_uploads",
+                     target=c["location"], problem=f"Verification {run.ref}: {c['matches']} subject(s) still present at the vendor",
+                     change="Repeat the deletion request at the vendor", risk="Low", side_effects="none",
+                     expected_outcome="0 fingerprint matches at the vendor", rollback_plan="Not reversible (deletion at third party)",
+                     verification_requirement="Re-query the vendor store: 0 matches",
+                     params={"subject_fingerprints": fps} if inc.exposure_type == "CONSENT_MISMATCH" else {"upload_ids": [u["upload_id"] for f in db.execute(select(Finding).where(Finding.incident_id == inc.id)).scalars() for u in (f.details.get("uploads") or [])]},
+                     safety={"result": "from verification evidence"})
+                new += 1
         open_buckets = {p["path"].strip("/").split("/", 1)[0] for p in probes
                         if p["outcome"] == "ACCESSIBLE" and not p.get("served_from_cache")}
         cached = sorted({p["path"] for p in probes if p["outcome"] == "ACCESSIBLE" and p.get("served_from_cache")})
@@ -235,3 +269,56 @@ def execute(ctx: Ctx) -> AgentOutput:
                + (f"; {len(skipped)} waiting on dependencies/approval ({', '.join(skipped)})" if skipped else "") + ".")
     return AgentOutput(summary=summary, confidence=1.0 if not failed else 0.5,
                        evidence_refs=[f"action:{c}" for c in done], data={"executed": done, "failed": failed, "skipped": skipped})
+
+
+def plan_vendor(ctx: Ctx, etype: str, scope: dict) -> AgentOutput:
+    """Integration exposures: stop the flow, remove the third-party copy, fix the cause."""
+    with session_scope() as db:
+        fps = sorted({fp for s in db.execute(select(SubjectSet).where(SubjectSet.incident_id == ctx.incident_id)).scalars()
+                      for fp in s.fingerprints})
+        fnd = db.execute(select(Finding).where(Finding.incident_id == ctx.incident_id)).scalars().first()
+        n = 0
+        if etype == "CONSENT_MISMATCH":
+            job = scope["job_id"]
+            _add(db, ctx.incident_id, 1, action_type="integration.disable_sync", target=f"job://{job}",
+                 problem=f"{job} keeps sending customers who withdrew marketing consent to the vendor",
+                 change=f"Disable {job} (containment)", risk="Medium: the campaign sync pauses for all members",
+                 side_effects="Marketing must re-enable the job after the consent filter is in place",
+                 expected_outcome="No further sync calls", rollback_plan=f"Re-enable {job}",
+                 verification_requirement="A forced sync run is refused", params={"job_id": job},
+                 safety={"result": "NO_DEPENDENCY", "window": "integration registry", "events_examined": 0,
+                         "unaffected": [{"principal": "consented members", "reason": "re-synced once the filter is on"}]})
+            _add(db, ctx.incident_id, 1, action_type="vendor.delete_subjects", target=f"vendor://{scope['vendor_store']}",
+                 problem=f"{len(fps)} withdrawn-consent subjects are held by the vendor",
+                 change=f"Request deletion of exactly those {len(fps)} subjects at Northwind (matched locally by keyed fingerprint)",
+                 risk="Low: only withdrawn-consent subjects are removed", side_effects="None for consented members",
+                 expected_outcome="0 withdrawn-consent fingerprints at the vendor", rollback_plan="Not reversible (deletion at third party)",
+                 verification_requirement="Re-query the vendor store: 0 matches", params={"subject_fingerprints": fps},
+                 safety={"result": "N/A (deletion of non-consented data)"})
+            _add(db, ctx.incident_id, 1, action_type="integration.enable_consent_filter", target=f"job://{job}",
+                 problem="The sync job does not filter customers who withdrew consent (root cause)",
+                 change="Set filter_withdrawn_consent = true on the job", risk="Low", side_effects="Withdrawn customers are never synced",
+                 expected_outcome="A future sync excludes withdrawn customers", rollback_plan="Set the flag back to false (not recommended)",
+                 verification_requirement="Adversarial re-sync sends 0 withdrawn subjects", params={"job_id": job},
+                 safety={"result": "N/A (preventive control)"})
+            n = 3
+        else:
+            ids = [u["upload_id"] for u in (fnd.details.get("uploads", []) if fnd else [])]
+            _add(db, ctx.incident_id, 1, action_type="vendor.ai_delete_uploads", target=f"vendor://{scope['vendor_store']}",
+                 problem=f"{scope['vendor']} holds {len(fps)} identifiable subjects from {len(ids)} upload(s)",
+                 change=f"File a deletion request for upload(s) {', '.join(map(str, ids))} through the vendor API",
+                 risk="Low", side_effects="The employee loses the AI summary", expected_outcome="0 fingerprint matches at the vendor",
+                 rollback_plan="Not reversible", verification_requirement="Re-query the vendor store: 0 matches",
+                 params={"upload_ids": ids}, safety={"result": "N/A (deletion at unapproved vendor)"})
+            _add(db, ctx.incident_id, 1, action_type="integration.block_vendor", target=f"registry://{scope['integration_id']}",
+                 problem=f"{scope['vendor']} is not an approved integration and nothing blocks uploads (root cause)",
+                 change=f"Register {scope['vendor']} as BLOCKED in the integration registry (egress governance)",
+                 risk="Low", side_effects="Employees cannot use this tool for customer data",
+                 expected_outcome="Registry lists the vendor as blocked", rollback_plan="Remove the registry entry",
+                 verification_requirement="Registry shows blocked=true",
+                 params={"integration_id": scope["integration_id"], "vendor": scope["vendor"]}, safety={"result": "N/A (preventive control)"})
+            n = 2
+        inc = db.get(Incident, ctx.incident_id)
+        inc.status = "AWAITING_APPROVAL"
+    summary = ctx.summarise("remediation.summary", {"proposed": n, "wave": 1, "held": 0})
+    return AgentOutput(summary=summary, confidence=0.9, data={"proposed": n, "wave": 1})

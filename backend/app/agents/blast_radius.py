@@ -31,13 +31,32 @@ def known_locations(inv: dict) -> list[dict]:
 def analyse(ctx: Ctx) -> AgentOutput:
     with session_scope() as db:
         inc = db.get(Incident, ctx.incident_id)
+        etype, scope = inc.exposure_type, dict(inc.scope or {})
         fnds = db.execute(select(Finding).where(Finding.incident_id == inc.id,
                                                 Finding.finding_type == "PUBLIC_OBJECT_WITH_IDENTIFIERS")).scalars().all()
         exposed = [(f.details["bucket"], f.details["key"]) for f in fnds]
 
-    ctx.step(f"Fingerprinting {len(exposed)} exposed object(s) inside the worker")
     subjects: set[str] = set()
     categories: dict[str, int] = {}
+    if etype == "CONSENT_MISMATCH":
+        ctx.step("Fingerprinting withdrawn-consent subjects held at the vendor (inside the worker)")
+        job = next(j for j in connectors.worker("GET", "/checks/consent-sync", params={"include_fingerprints": True})
+                   if j["job_id"] == scope["job_id"])
+        fps = job.get("withdrawn_at_vendor_fingerprints") or []
+        subjects |= set(fps)
+        categories = {"email": len(fps), "phone": len(fps)}
+        with session_scope() as db:
+            db.add(SubjectSet(incident_id=ctx.incident_id, label=f"withdrawn-at-vendor:{scope['vendor_store']}", fingerprints=fps))
+    elif etype == "SHADOW_AI_UPLOAD":
+        ctx.step("Fingerprinting the payloads held by the unapproved AI tool (inside the worker)")
+        v = next(x for x in connectors.worker("GET", "/checks/egress", params={"include_fingerprints": True}) if x["vendor"] == scope["vendor"])
+        fps = v.get("subject_fingerprints") or []
+        subjects |= set(fps)
+        categories = dict(v.get("categories") or {})
+        with session_scope() as db:
+            db.add(SubjectSet(incident_id=ctx.incident_id, label=f"received-by:{scope['vendor_store']}", fingerprints=fps))
+    else:
+        ctx.step(f"Fingerprinting {len(exposed)} exposed object(s) inside the worker")
     for b, k in exposed:
         r = connectors.worker("POST", "/scan/object", json={"bucket": b, "key": k, "include_fingerprints": True})
         fps = r.get("subject_fingerprints") or []
@@ -68,14 +87,30 @@ def analyse(ctx: Ctx) -> AgentOutput:
         if not r["checked"]:
             rec["error"] = r.get("error")
             unverified.append({"location": rec["location"], "reason": f"could not be inspected ({r.get('error')})"})
+        if r["kind"] == "vendor" and r["present"]:
+            rec["role"] = "third-party copy"
         locations.append(rec)
     for b, k in exposed:
         unverified.append({"location": f"cdn://cdn.meridian.sandbox/{b}/{k}",
                            "reason": "CDN edge cache contents are not inspectable by blast radius; checked by adversarial verification"})
     with_data = [loc for loc in locations if loc["present"]]
 
-    paths = [{"path": ["Internet (anonymous)", "cdn.meridian.sandbox", b, k], "bucket": b, "object": k} for b, k in exposed]
-    graph = _graph(locations, exposed, public)
+    if etype in ("CONSENT_MISMATCH", "SHADOW_AI_UPLOAD"):
+        src = scope.get("source_table") or "employee upload (personal API key)"
+        dst = scope["vendor_store"]
+        paths = [{"path": [src, scope.get("job_id") or "direct upload", f"vendor://{dst}"]}]
+        graph = {"nodes": [
+            {"id": "src", "label": src, "kind": "table" if scope.get("source_table") else "network", "status": "SYSTEM_OF_RECORD",
+             "ref": src, "connector": "worker", "mock": True},
+            {"id": "via", "label": scope.get("job_id") or (", ".join(scope.get("api_keys", [])) or "upload"), "kind": "cdn",
+             "status": "PATH", "ref": "integration", "connector": "worker", "mock": True},
+            {"id": "dst", "label": dst, "kind": "bucket", "status": "EXPOSED", "ref": f"vendor://{dst}", "connector": "mock-vendor",
+             "mock": True}],
+            "edges": [{"id": "e1", "source": "src", "target": "via", "kind": "read_by", "exposure_path": True},
+                      {"id": "e2", "source": "via", "target": "dst", "kind": "sent_to", "exposure_path": True}]}
+    else:
+        paths = [{"path": ["Internet (anonymous)", "cdn.meridian.sandbox", b, k], "bucket": b, "object": k} for b, k in exposed]
+        graph = _graph(locations, exposed, public)
     facts = {"record_count": len(subjects), "locations_with_data": len(with_data), "categories": sorted(categories),
              "consent": consent, "unverified": len(unverified)}
     summary = ctx.summarise("blast.summary", facts)

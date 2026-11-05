@@ -26,7 +26,8 @@ def find_commit(bucket: str, commits_with_diffs: list[dict]) -> dict | None:
 
 
 def correlate(bucket: str, commit: dict | None, iam_events: list[dict], audit_events: list[dict]) -> dict:
-    changes = [e for e in iam_events if e.get("type") == "BucketPolicyChanged" and e.get("target") == bucket
+    changes = [e for e in iam_events if e.get("type") == "BucketPolicyChanged"
+               and (e.get("target") == bucket or str(e.get("target", "")).startswith(bucket + "/"))
                and (e.get("details") or {}).get("anonymous") == "download"]
     audit = [e for e in audit_events if e.get("api") in ("PutBucketPolicy", "DeleteBucketPolicy") and e.get("bucket") == bucket]
     if commit:

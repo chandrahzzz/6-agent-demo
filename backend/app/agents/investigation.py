@@ -47,6 +47,11 @@ def investigate(ctx: Ctx) -> AgentOutput:
     with session_scope() as db:
         inc = db.get(Incident, ctx.incident_id)
         inc.status = "INVESTIGATING"
+        etype = inc.exposure_type
+    if etype in ("CONSENT_MISMATCH", "SHADOW_AI_UPLOAD"):
+        return investigate_vendor(ctx, etype)
+    with session_scope() as db:
+        inc = db.get(Incident, ctx.incident_id)
         primary = (inc.scope or {}).get("primary")
         buckets = sorted((inc.scope or {}).get("buckets", []), key=lambda b: b != primary)  # primary first
         fnds = db.execute(select(Finding).where(Finding.incident_id == inc.id,
@@ -60,7 +65,7 @@ def investigate(ctx: Ctx) -> AgentOutput:
     networks = connectors.worker("GET", "/iam/networks")
     opened = {}
     for b in buckets:
-        changes = [e for e in iam_events if e["type"] == "BucketPolicyChanged" and e["target"] == b]
+        changes = [e for e in iam_events if e["type"] == "BucketPolicyChanged" and (e["target"] == b or e["target"].startswith(b + "/"))]
         opens = [e for e in changes if e["details"].get("anonymous") == "download"]
         if opens:
             opened[b] = datetime.fromisoformat(opens[-1]["ts"])
@@ -137,3 +142,88 @@ def investigate(ctx: Ctx) -> AgentOutput:
                        data={"verdict": v, "reasons": reasons, "root_cause": [{k: c[k] for k in ("bucket", "kind", "statement", "confidence")} for c in causes],
                              "coverage": coverage, "external_attempts": len(ev.external_attempts),
                              "external_success": len(ev.external_success)})
+
+
+def investigate_vendor(ctx: Ctx, etype: str) -> AgentOutput:
+    """Data that left through an integration: prove what was sent, to whom, by whom, and why."""
+    with session_scope() as db:
+        inc = db.get(Incident, ctx.incident_id)
+        scope, detected_at = dict(inc.scope or {}), inc.detected_at
+        fnd = db.execute(select(Finding).where(Finding.incident_id == inc.id)).scalars().first()
+        details = dict(fnd.details) if fnd else {}
+    calls = connectors.worker("GET", "/vendor/calls")
+    iam_events = connectors.worker("GET", "/iam/events")
+    principals = {p["name"]: p for p in connectors.worker("GET", "/iam/principals")}
+    timeline: list[dict] = []
+    if etype == "CONSENT_MISMATCH":
+        ctx.step("Reading the vendor call log and the integration-job change history")
+        sync_calls = [c for c in calls if c["vendor"] == "northwind" and c["endpoint"].endswith("batchUpsert")]
+        changes = [e for e in iam_events if e["type"] == "IntegrationJobChanged" and e["target"] == scope["job_id"]]
+        sent = sum(c["bytes_in"] for c in sync_calls)
+        verdict, conf = "ACCESSED_INTERNAL_ONLY", 0.9
+        reasons = [f"{len(sync_calls)} sync call(s) delivered {sent:,} bytes to the approved processor Northwind",
+                   f"{details.get('withdrawn_at_vendor')} subjects who withdrew marketing consent are present at the vendor "
+                   "(keyed-fingerprint match)",
+                   "no access by an unknown external origin is involved"]
+        ch = changes[-1] if changes else None
+        cause = {"bucket": scope["job_id"], "kind": "INTEGRATION_CONFIG", "confidence": 0.92 if ch else 0.6, "commit": None,
+                 "diff": None, "policy_change_event": ch, "audit_corroboration": [],
+                 "statement": (f"sync job {scope['job_id']} was enabled by {ch['principal'] if ch else 'unknown'} with "
+                               "filter_withdrawn_consent=false, so customers who withdrew marketing consent are sent to the vendor")}
+        if ch:
+            timeline.append({"ts": ch["ts"], "kind": "policy_change",
+                             "label": f"{scope['job_id']} enabled by {ch['principal']} (consent filter off)"})
+        for c in sync_calls:
+            timeline.append({"ts": c["ts"], "kind": "access_partner",
+                             "label": f"POST {c['endpoint']} -> {c['status']} ({c['bytes_in']:,} B to Northwind)"})
+        evidence = {"external_attempts": [], "external_success": [], "internal": [], "probe_requests_excluded": 0,
+                    "partner": [{"ts": c["ts"], "source": "vendor_call_log", "method": c["method"], "path": c["endpoint"],
+                                 "status": c["status"], "bytes": c["bytes_in"], "remote_ip": c["source_ip"],
+                                 "origin": "Meridian sync job to Northwind", "cache": None, "user_agent": None} for c in sync_calls],
+                    "events_by_source": {"vendor_call_log": len(sync_calls), "iam": len(changes)},
+                    "window_start": ch["ts"] if ch else _iso(detected_at), "reasons": reasons}
+        facts = {"verdict": verdict, "external": {"attempts": 0, "successful_downloads": 0, "bytes_served_real_object": 0},
+                 "root_cause": cause["statement"],
+                 "partner_access": f"Northwind received {sent:,} bytes over {len(sync_calls)} sync call(s)", "channel": "vendor_sync"}
+        coverage = {"vendor_call_log": True, "iam": bool(changes)}
+    else:
+        ctx.step("Reading the vendor call log for uploads to the unapproved AI tool")
+        ups = [c for c in calls if c["vendor"] == scope["vendor"] and c["endpoint"].endswith("/upload")]
+        sent = sum(c["bytes_in"] for c in ups)
+        keys = sorted({c["api_key_id"] for c in ups if c["api_key_id"]})
+        owner = next((k.split("/", 1)[1] for k in keys if "/" in k and k.split("/", 1)[1] in principals), None)
+        uploads = details.get("uploads", [])
+        subjects = sum(u["subject_count"] for u in uploads)
+        verdict, conf = ("LIKELY_EXFILTRATED", 0.95) if ups and subjects else ("INSUFFICIENT_EVIDENCE", 0.5)
+        reasons = [f"{len(ups)} upload(s), {sent:,} bytes, delivered to {scope['vendor']} (not in the approved-integration registry)",
+                   f"{subjects} identifiable subjects proven present in the vendor's received-payload store by keyed fingerprints",
+                   "vendor-reported training use: " + (", ".join("yes" if u.get("used_for_training") else "no" for u in uploads) or "unknown")]
+        cause = {"bucket": scope["vendor"], "kind": "SHADOW_IT", "confidence": 0.9 if owner else 0.6, "commit": None, "diff": None,
+                 "policy_change_event": None, "audit_corroboration": [],
+                 "statement": (f"{owner or 'an unidentified user'} uploaded {', '.join(u['filename'] for u in uploads)} with a personal "
+                               f"API key ({', '.join(keys)}); {scope['vendor']} is not an approved integration and no egress control blocked it")}
+        for c in ups:
+            timeline.append({"ts": c["ts"], "kind": "access_external_success",
+                             "label": f"POST {c['endpoint']} -> {c['status']} ({c['bytes_in']:,} B, key {c['api_key_id']})"})
+        evidence = {"external_attempts": [], "internal": [], "partner": [], "probe_requests_excluded": 0,
+                    "external_success": [{"ts": c["ts"], "source": "vendor_call_log", "method": c["method"], "path": c["endpoint"],
+                                          "status": c["status"], "bytes": c["bytes_in"], "remote_ip": c["source_ip"],
+                                          "origin": f"{scope['vendor']} (unapproved AI tool)", "cache": None, "user_agent": None}
+                                         for c in ups],
+                    "events_by_source": {"vendor_call_log": len(ups)},
+                    "window_start": ups[0]["ts"] if ups else _iso(detected_at), "reasons": reasons}
+        facts = {"verdict": verdict, "external": {"attempts": 0, "successful_downloads": len(ups), "bytes_served_real_object": sent},
+                 "root_cause": cause["statement"], "channel": "vendor_upload"}
+        coverage = {"vendor_call_log": True}
+    timeline.append({"ts": _iso(detected_at), "kind": "detected", "label": "Detected by Exposure Hunter"})
+    timeline.sort(key=lambda t: t["ts"])
+    summary = ctx.summarise("investigation.summary", facts)
+    with session_scope() as db:
+        db.add(Investigation(incident_id=ctx.incident_id, verdict=verdict, confidence=conf, summary=summary, evidence=evidence,
+                             root_cause=[cause], timeline=timeline, log_coverage=coverage))
+        inc = db.get(Incident, ctx.incident_id)
+        inc.access_verdict = verdict
+        inc.exposure_started_at = datetime.fromisoformat(evidence["window_start"])
+    return AgentOutput(summary=summary, confidence=conf, evidence_refs=["log:vendor_call_log"],
+                       data={"verdict": verdict, "reasons": reasons,
+                             "root_cause": [{k: cause[k] for k in ("bucket", "kind", "statement", "confidence")}]})
