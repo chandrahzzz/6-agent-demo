@@ -1,0 +1,39 @@
+{
+ "scenario": "HERO-01",
+ "params": {
+  "access_variant": "B",
+  "replica_public": true,
+  "cdn_cached": true
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "PUBLIC_STORAGE",
+    "key": "meridian-customer-backups"
+   }
+  ],
+  "verdict": "LIKELY_EXFILTRATED",
+  "root_cause": {
+   "kind": "CONFIG_COMMIT",
+   "author": "dev.rahul",
+   "subject": "share backups with vendor"
+  },
+  "record_count": 5000,
+  "location_counts": {
+   "s3://meridian-archive/archive/2026-10/customers_full_2026-10-01.csv": 4870
+  },
+  "expected_actions": [
+   "bucket.set_private",
+   "cdn.purge",
+   "infra.enable_policy_gate",
+   "infra.patch_bucket_private",
+   "partner.presigned_handoff"
+  ],
+  "first_verification": "PARTIALLY_FIXED",
+  "residual": [
+   "CDN cache",
+   "replica bucket"
+  ],
+  "final_verification": "VERIFIED_FIXED"
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "scenario": "PAN-DISCOVERY",
+ "params": {
+  "variant_seed": 3689
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "LITE:PAN-DISCOVERY",
+    "key": "db://meridian/loan_applications"
+   }
+  ],
+  "verdict": "EXPOSED_NOT_ACCESSED",
+  "lite": true
+ }
+}

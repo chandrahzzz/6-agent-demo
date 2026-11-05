@@ -1,0 +1,16 @@
+{
+ "scenario": "DATABASE-BACKUP-DRIFT",
+ "params": {
+  "variant_seed": 8865
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "LITE:DATABASE-BACKUP-DRIFT",
+    "key": "s3://meridian-tmp-dumps"
+   }
+  ],
+  "verdict": "EXPOSED_NOT_ACCESSED",
+  "lite": true
+ }
+}

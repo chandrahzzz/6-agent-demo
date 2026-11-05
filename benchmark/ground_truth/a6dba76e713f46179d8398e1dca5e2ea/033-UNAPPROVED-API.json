@@ -1,0 +1,16 @@
+{
+ "scenario": "UNAPPROVED-API",
+ "params": {
+  "variant_seed": 20543
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "LITE:UNAPPROVED-API",
+    "key": "vendor://fastsms"
+   }
+  ],
+  "verdict": "INSUFFICIENT_EVIDENCE",
+  "lite": true
+ }
+}

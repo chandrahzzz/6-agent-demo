@@ -1,37 +1,90 @@
-# MALLYA — Progress
+# MALLYA — Progress (final)
 
 ## Milestones
 
 | Milestone | Status | Evidence |
 |---|---|---|
-| M0 Foundation | Backend done; frontend shell pending | compose stack (13 services), Alembic migration (26 tables), Argon2 + cookie sessions, 4 roles |
-| M1 Hero slice | **Done** | `tests/test_e2e_hero.py` 2/2 pass from clean reset (variant A full loop with manual approvals; variant B exfiltration) |
-| M2 Evidence | Core done (chain, Ed25519, manifest, zip, standalone verifier); tamper tests pending | pack verifies 5/5 via `tools/mallya_verify.py` |
-| M3 Privacy boundary | Gateway + DLP + detectors done; test suite + UI pending | |
-| M4 Deep scenarios | Not started | |
-| M5 Lite scenarios | Not started | |
-| M6 Benchmark | Not started | |
-| M7 Frontend polish | Not started | |
-| M8 Demo + docs | Not started | |
+| M0 Foundation | Done | 13-service compose; Alembic (2 revisions, 26 tables); Argon2 + cookie sessions; 4 roles; console shell |
+| M1 Hero slice | Done | `tests/test_e2e_hero.py` 2/2 from a clean reset. Variant A: full loop with manual approvals, PARTIALLY_FIXED (real CDN cache + held replica), then VERIFIED_FIXED. Variant B: LIKELY_EXFILTRATED. |
+| M2 Evidence | Done | `tests/test_evidence_tamper.py` 9/9; standalone `tools/mallya_verify.py` |
+| M3 Privacy boundary | Done | `tools/privacy_suite.py` 13/13, including the leak scan of logs, DB, telemetry, exports and API, with a positive control |
+| M4 Deep scenarios | Done | `tests/test_e2e_deep.py` 4/4 (D-02…D-05) |
+| M5 Lite scenarios | Done | `tests/test_lite.py` 15/15: exactly one incident of the planted type, correct verdict, recommendation only |
+| M6 Benchmark | Done | 3 recorded runs (below), failures kept |
+| M7 Frontend polish | Done | 48 screenshots in `docs/screenshots/` (1440/390 × dark/light × 12 screens); baseline-ui, fixing-accessibility and fixing-motion-performance applied |
+| M8 Demo + docs | Done | Demo Mode; `docs/demo-script.md`; architecture, privacy, evidence, security, threat model, limitations, setup, API, benchmark methodology |
 
-## Test results (latest)
-- 2026-11-05: backend unit `tests/test_verdicts_unit.py` 16 passed.
-- 2026-11-05: `tests/test_e2e_hero.py` 2 passed (117 s).
+## Test results (final pass, 2026-11-05)
+
+| Suite | Result |
+|---|---|
+| Backend: unit, boundary, privacy, tamper, HERO E2E, Deep E2E (`pytest`, without lite) | **44 passed** (194 s) |
+| Backend: Lite E2E (`tests/test_lite.py`) | **15 passed** (158 s) |
+| Worker (`pytest`, including the live policy-gate block of the re-applied bad commit) | **3 passed** |
+| Privacy suite (`python tools/privacy_suite.py`) | **13/13** (387 artefacts, 0 raw identifiers, positive control 4/4) |
+| Frontend: Vitest | **5 passed** |
+| Frontend: `tsc --noEmit` | clean |
+
+Definition-of-Done proofs: verifier cannot reach MinIO except via nginx (`test_verifier_cannot_reach_minio_except_via_nginx`); a cached copy or exposed replica prevents VERIFIED_FIXED (HERO E2E plus unit tests); the re-applied bad commit is blocked (worker live test, and the regression check inside every gate action); ground-truth import boundary (`test_ground_truth_import_boundary`); tampering detected (9 tamper tests); closing is refused unless the latest verification is VERIFIED_FIXED (HERO E2E).
+
+## Benchmark results (all runs kept)
+
+| Run | Set | Runs | Failed | P / R / F1 | Composite* | Notes |
+|---|---|---|---|---|---|---|
+| `d5c194f9` (run 1) | main | 25 | 0 | 0.862 / 1.0 / 0.926 | 97.8 | 4 FP: Lite AADHAAR-DISCOVERY duplicated D-02's deep incident |
+| | held-out | 9 | 0 | 0.692 / 1.0 / 0.818 | 93.1 | + blast radius 83%: **ground-truth bug** (export past end of data) |
+| `0d75b6e2` (run 2) | — | 28 of 34 | — | main 1.0 / 1.0 / 1.0 | — | **Incomplete**: harness process died after a transient Docker Desktop bind-mount I/O error (EIO). Marked FAILED; runs kept. |
+| `a6dba76e` (run 3) | main | 25 | 0 | 1.0 / 1.0 / 1.0 | 100.0 | every metric 100% (verdict n=25, attempt-vs-download n=9, root cause/blast/fingerprint/remediation/approval/idempotency/verification n=10, residual n=4, lite n=15) |
+| | held-out | 9 | 0 | 1.0 / 1.0 / 1.0 | 100.0 | detectors frozen at `detectors-v1` (hashes match) |
+
+\* Composite is project-defined (Detection 30 / Investigation 25 / Remediation 25 / Verification 20), not an industry standard.
+
+**Read these numbers with care:**
+- **Same author.** One author wrote the scenarios, the ground-truth generator and the detectors, so perfect scores show internal consistency, not generalisation.
+- **Fixes between runs 1 and 3:**
+  1. A real MALLYA defect: Lite findings on objects already inside an open incident are now correlated instead of duplicated.
+  2. A ground-truth generator bug: the export size wasn't capped at the 5,000 existing customers.
+  The detectors did not change, as the held-out hash check confirms.
+- **Small held-out set:** 9 runs.
+- **LLM comparison:** the LLM-assisted mode needs an API key and was not run.
+
+Mean timings (run 3, main set):
+
+| Stage | Mean |
+|---|---|
+| Detect | 1.8 s |
+| Verdict | 0.6 s |
+| Blast radius | 1.7 s |
+| Remediation | 0.5 s |
+| Verification | 12.2 s |
+| Evidence pack | 0.2 s |
+| Detect → verified fix | 23.4 s (wall clock, presenter auto-approve) |
+
+Exports: `benchmark/results/<id>/{benchmark.json, runs.csv, report.pdf}`.
 
 ## Decisions
-- **One shared Python image** for every Python service (disk on the dev machine is nearly full). Code is bind-mounted per service, so each container only sees what it should (ground truth is never mounted into the worker).
-- **MinIO image**: Docker Hub / Quay MinIO images are no longer pullable; using `bitnamilegacy/minio:2025.7.23` (contains both `minio` and `mc`).
-- **Control plane holds no customer-data credentials.** All storage/DB/vendor access goes through the customer-side worker, which alone holds `FINGERPRINT_KEY` and returns metadata only.
-- **Probe gateway**: backend reaches the external probes through an nginx server block (port 9100) that only accepts customer_net clients; probes themselves stay on external_net only.
-- **Why the first HERO-01 verification is PARTIALLY_FIXED (not staged):**
-  1. The replica was opened by hand for the Northwind partner, who pulls it anonymously. The Remediation Agent's safety check finds this real dependency in the access log and HOLDS the replica action, proposing a presigned-URL handoff instead. Presenter auto-approve never approves HELD actions.
-  2. Blast radius treats the CDN as an exposure path, not a data store (it has no cache-inspection capability), so it marks the cache UNVERIFIED. The verifier's external GET then gets a real `200 HIT` from nginx even though the origin returns 403.
-  Wave 2 is planned from the verifier's evidence (presigned handoff + purge), after which verification is VERIFIED_FIXED.
-- **Origin vs edge probes**: the verifier sends each sensitive path twice — as an attacker would (through the cache) and with a query string (nginx never caches/serves those), so origin state and cache state are measured separately.
-- **MALLYA's own probes never populate the cache** (`proxy_no_cache` on `X-Mallya-Probe` / `X-Mallya-Inspect`), so verification cannot create the residual it is looking for.
-- **Infra sync is incremental** (applies buckets changed since the last applied commit), which is why manual drift on the replica survives a config fix.
+- **One shared Python image** for every Python service (the dev machine's disk was nearly full). Code is bind-mounted per service; ground truth is never mounted into the worker. The benchmark harness alone gets the data generator (`synth.py`, read-only) to compute ground truth.
+- **MinIO image:** `bitnamilegacy/minio:2025.7.23`, because the Docker Hub and Quay MinIO images can no longer be pulled anonymously.
+- **Control plane holds no customer-data credentials.** All storage, DB and vendor access goes through the customer-side worker, which alone holds `FINGERPRINT_KEY`.
+- **Probe gateway:** the backend reaches the external probes through an nginx block (`:9100`) that accepts only customer_net clients.
+- **Why the first HERO-01 verification is PARTIALLY_FIXED (not staged):** the safety check holds the replica fix because Northwind depends on anonymous reads, and blast radius treats the CDN as a path, not a store. The verifier then measures both residuals for real. See `docs/architecture.md`.
+- **Origin vs edge probes:** every sensitive path is requested twice, once through the cache like an attacker and once with a query string nginx never serves from cache. MALLYA's own probes never populate the cache.
+- **Infra sync is incremental**, so manual drift on the replica survives a config fix.
+- **Policy-gate regression test** re-applies only the bad commit's change on top of the fixed config. An earlier `cherry-pick -X theirs` silently undid the fix's reclassification; D-02's E2E caught that.
+- **Prefix-scoped grants** (public links) are evaluated per object, because the bucket-level policy reads `custom`.
+- **Lite/Deep correlation:** a Lite finding on an object already in an open incident is attached to that incident (found by benchmark run 1).
+- **Frontend dev server** uses webpack with polling. Turbopack and inotify don't see changes on Windows bind mounts.
+- **Port 3100** for the console, because port 3000 was taken by another project's container on this machine.
 
 ## Known issues / limitations
-- `mc anonymous set download` is MinIO's read-only policy and **includes ListBucket**, so the attacker's anonymous LIST returns 200 with key names (not object bytes). Spec 4.3 expected 403/404; we report real behaviour. Verdict logic counts it as an attempt (no object bytes served).
-- Verification takes ~20 s, dominated by the verifier's network self-test (DNS lookups of unreachable names time out).
-- MinIO has no KMS configured, so objects are not encrypted at rest; the risk score reflects this as a fact.
+See [docs/limitations.md](docs/limitations.md). In short:
+- The MinIO "download" policy allows LIST (200 with key names, no object bytes).
+- No KMS, so no encryption at rest.
+- Verdicts are bounded by the log sources.
+- Fingerprint search covers known locations only.
+- Lite scenarios are recommendation-only.
+- Vendor deletion is a mock.
+- The evidence key is a dev key.
+- Bucket names are fixed in benchmark variants.
+- `make dev` from empty volumes was exercised at M0. It was not re-run after the final changes, because `down -v` would erase the recorded benchmark history.
+- Docker Desktop on Windows produced one transient bind-mount I/O error during benchmark run 2.
