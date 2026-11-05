@@ -18,3 +18,4 @@ benchmark/holdout/generated/
 exports/
 *.zip
 .DS_Store
+.playwright-mcp/

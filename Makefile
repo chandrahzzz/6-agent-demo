@@ -9,7 +9,7 @@ install:            ## generate .env with random secrets and build images
 
 dev: install        ## start the full stack (sandbox + control plane + frontend)
 	$(DC) up -d
-	@echo "MALLYA: http://localhost:3000   API: http://localhost:8000/docs"
+	@echo "MALLYA: http://localhost:3100   API: http://localhost:8000/docs"
 
 down:
 	$(DC) down

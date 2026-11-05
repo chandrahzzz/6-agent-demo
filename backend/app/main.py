@@ -15,6 +15,7 @@ from .core.config import settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 # Access logs contain only method + path (no bodies, no query values of note); keep them quiet.
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 async def _nginx_poller() -> None:

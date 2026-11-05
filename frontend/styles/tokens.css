@@ -1,0 +1,77 @@
+/* MALLYA design tokens — "calm control room".
+ * Everything derives from one --brand-hue. Neutrals are brand-tinted (never pure black/white).
+ * One accent. Status colours carry meaning only:
+ *   critical / still exposed -> red, high / partially fixed -> amber, verified fixed -> green,
+ *   unverified -> neutral grey (dashed border), info -> blue.
+ * Components must use these tokens (via Tailwind theme names) — never raw colour values. */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-hue: 222;
+
+  --bg: oklch(0.158 0.012 var(--brand-hue));
+  --bg-grid: oklch(0.21 0.014 var(--brand-hue) / 0.55);
+  --surface: oklch(0.188 0.014 var(--brand-hue));
+  --surface-2: oklch(0.218 0.015 var(--brand-hue));
+  --surface-3: oklch(0.256 0.016 var(--brand-hue));
+  --border: oklch(0.292 0.015 var(--brand-hue));
+  --border-strong: oklch(0.37 0.016 var(--brand-hue));
+
+  --fg: oklch(0.945 0.006 var(--brand-hue));
+  --fg-muted: oklch(0.765 0.012 var(--brand-hue));
+  --fg-subtle: oklch(0.66 0.013 var(--brand-hue));
+
+  /* the single accent: actions, focus, links */
+  --accent: oklch(0.8 0.105 195);
+  --accent-strong: oklch(0.86 0.1 195);
+  --accent-fg: oklch(0.2 0.03 195);
+  --accent-soft: oklch(0.8 0.105 195 / 0.12);
+
+  --critical: oklch(0.7 0.18 25);
+  --critical-soft: oklch(0.7 0.18 25 / 0.13);
+  --warning: oklch(0.82 0.145 78);
+  --warning-soft: oklch(0.82 0.145 78 / 0.13);
+  --ok: oklch(0.79 0.15 155);
+  --ok-soft: oklch(0.79 0.15 155 / 0.13);
+  --info: oklch(0.76 0.12 255);
+  --info-soft: oklch(0.76 0.12 255 / 0.13);
+  --unverified: oklch(0.74 0.012 var(--brand-hue));
+  --unverified-soft: oklch(0.74 0.012 var(--brand-hue) / 0.08);
+
+  --shadow-soft: 0 1px 0 oklch(0 0 0 / 0.25);
+  --radius: 0.4375rem; /* 7px */
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: oklch(0.972 0.005 var(--brand-hue));
+  --bg-grid: oklch(0.9 0.008 var(--brand-hue) / 0.6);
+  --surface: oklch(0.992 0.003 var(--brand-hue));
+  --surface-2: oklch(0.955 0.006 var(--brand-hue));
+  --surface-3: oklch(0.925 0.008 var(--brand-hue));
+  --border: oklch(0.885 0.008 var(--brand-hue));
+  --border-strong: oklch(0.8 0.01 var(--brand-hue));
+
+  --fg: oklch(0.22 0.015 var(--brand-hue));
+  --fg-muted: oklch(0.42 0.016 var(--brand-hue));
+  --fg-subtle: oklch(0.5 0.016 var(--brand-hue));
+
+  --accent: oklch(0.5 0.1 200);
+  --accent-strong: oklch(0.44 0.1 200);
+  --accent-fg: oklch(0.985 0.005 200);
+  --accent-soft: oklch(0.5 0.1 200 / 0.1);
+
+  --critical: oklch(0.52 0.19 27);
+  --critical-soft: oklch(0.52 0.19 27 / 0.09);
+  --warning: oklch(0.53 0.12 70);
+  --warning-soft: oklch(0.7 0.14 75 / 0.14);
+  --ok: oklch(0.5 0.13 155);
+  --ok-soft: oklch(0.5 0.13 155 / 0.1);
+  --info: oklch(0.5 0.14 255);
+  --info-soft: oklch(0.5 0.14 255 / 0.09);
+  --unverified: oklch(0.48 0.012 var(--brand-hue));
+  --unverified-soft: oklch(0.48 0.012 var(--brand-hue) / 0.06);
+
+  --shadow-soft: 0 1px 2px oklch(0.3 0.02 var(--brand-hue) / 0.06);
+}

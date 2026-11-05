@@ -11,7 +11,7 @@ switch ($Target) {
   "dev" {
     python tools/gen_env.py
     docker compose up -d --build
-    Write-Host "MALLYA: http://localhost:3000   API: http://localhost:8000/docs"
+    Write-Host "MALLYA: http://localhost:3100   API: http://localhost:8000/docs"
   }
   "down" { docker compose down }
   "migrate" { BE "cd /app/backend && alembic upgrade head" }
