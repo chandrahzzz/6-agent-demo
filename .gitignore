@@ -13,7 +13,8 @@ frontend/playwright-report/
 sandbox/infra-config/
 # generated benchmark artefacts
 benchmark/results/
-benchmark/ground_truth/*.json
+benchmark/ground_truth/*
+!benchmark/ground_truth/static/
 benchmark/holdout/generated/
 exports/
 *.zip
