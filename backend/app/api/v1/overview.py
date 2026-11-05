@@ -36,7 +36,7 @@ def health(db: Session = Depends(get_db)) -> dict:
 
 
 def privacy_summary(db: Session) -> dict:
-    calls = db.execute(select(LLMCall)).scalars().all()
+    calls = db.execute(select(LLMCall).where(LLMCall.is_test.is_(False))).scalars().all()
     try:
         worker_stats = connectors.worker("GET", "/stats", timeout=5)
     except connectors.ConnectorError:
@@ -150,6 +150,28 @@ def llm_calls(page: Page = Depends(), db: Session = Depends(get_db)) -> dict:
 @router.get("/audit-logs")
 def audit_logs(page: Page = Depends(), db: Session = Depends(get_db)) -> dict:
     return paginate(db, select(AuditLog).order_by(AuditLog.ts.desc()), page)
+
+
+class TestResult(BaseModel):
+    id: str = Field(max_length=128)
+    name: str = Field(max_length=255)
+    passed: bool
+    detail: str = Field(default="", max_length=2000)
+
+
+class TestRunIn(BaseModel):
+    results: list[TestResult] = Field(max_length=100)
+    source: str = Field(default="tools/privacy_suite.py", max_length=64)
+
+
+@router.post("/privacy/tests", status_code=201)
+def record_privacy_tests(body: TestRunIn, user: User = Depends(require_roles("ADMIN")), db: Session = Depends(get_db)) -> dict:
+    run = PrivacyTestRun(passed=sum(r.passed for r in body.results), total=len(body.results),
+                         results=[r.model_dump() for r in body.results], source=body.source)
+    db.add(run)
+    db.commit()
+    audit("privacy.tests_recorded", actor=user.email, actor_role=user.role, details={"passed": run.passed, "total": run.total})
+    return row(run)
 
 
 class RegContext(BaseModel):

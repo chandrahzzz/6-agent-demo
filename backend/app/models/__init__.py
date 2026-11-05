@@ -386,6 +386,7 @@ class LLMCall(OrgMixin, Base):
     raw_identifiers_sent: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[float | None] = mapped_column(Float)
     fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class PrivacyViolation(OrgMixin, Base):

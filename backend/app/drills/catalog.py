@@ -1,4 +1,4 @@
-"""Scenario catalog (public metadata only - expected outputs live in benchmark/ground_truth, hidden)."""
+"""Scenario catalog: public metadata only. Expected outputs are kept in the hidden benchmark set."""
 from __future__ import annotations
 
 DEEP = [

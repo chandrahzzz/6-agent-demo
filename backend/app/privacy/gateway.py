@@ -108,7 +108,7 @@ def _record_block(agent: str, incident_id: str | None, purpose: str, payload: di
         db.add(LLMCall(agent=agent, incident_id=incident_id, provider=providers.active_name(), model=providers.model_name(),
                        purpose=purpose, shared_fields=[], payload_bytes=len(data),
                        payload_sha256=hashlib.sha256(data).hexdigest(), blocked=True,
-                       dlp_findings=exc.detectors, raw_identifiers_sent=0))
+                       dlp_findings=exc.detectors, raw_identifiers_sent=0, is_test=is_test))
         db.add(PrivacyViolation(agent=agent, incident_id=incident_id, rule=exc.rule, detectors=exc.detectors,
                                 field_paths=exc.paths, action="BLOCKED", is_test=is_test))
 
@@ -130,5 +130,6 @@ def complete(agent: str, purpose: str, payload: dict, *, incident_id: str | None
         db.add(LLMCall(agent=agent, incident_id=incident_id, provider=used, model=providers.model_name(),
                        purpose=purpose, shared_fields=shared, payload_bytes=len(data),
                        payload_sha256=hashlib.sha256(data).hexdigest(), blocked=False, dlp_findings={},
-                       raw_identifiers_sent=0, latency_ms=round((time.monotonic() - t0) * 1000, 1), fallback=fallback))
+                       raw_identifiers_sent=0, latency_ms=round((time.monotonic() - t0) * 1000, 1), fallback=fallback,
+                       is_test=is_test))
     return text
