@@ -35,7 +35,7 @@ export default function PrivacyPage() {
               <p className="text-meta text-fg-muted">Computed from {num(p.llm_calls + p.payloads_blocked)} audited calls: payloads that passed DLP carried zero identifier candidates; blocked payloads never left.</p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <Metric label="Detected locally" value={num(p.detected_locally)} hint={p.worker_available ? "by the customer-side worker" : "worker unavailable"} />
             <Metric label="Masked samples" value={num(p.masked)} />
             <Metric label="Fingerprinted" value={num(p.fingerprinted)} hint="HMAC-SHA256, versioned key" />

@@ -1,0 +1,16 @@
+{
+ "scenario": "AI-TRAINING-DATA-LEAK",
+ "params": {
+  "variant_seed": 28571
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "LITE:AI-TRAINING-DATA-LEAK",
+    "key": "vendor://quicksummarize"
+   }
+  ],
+  "verdict": "LIKELY_EXFILTRATED",
+  "lite": true
+ }
+}

@@ -61,15 +61,15 @@ export function GraphTab({ incidentId }: { incidentId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Metric label="Records affected" value={num(br.record_count)} hint="Distinct subjects by keyed fingerprint" />
-        <Metric label="Withdrew marketing consent" value={num(br.consent.marketing_withdrawn)} tone="text-warning"
+        <Metric label="Withdrew marketing consent" value={num(br.consent.marketing_withdrawn)}
           hint={`of ${num(br.consent.subjects)} affected subjects`} />
         <Metric label="Locations holding the data" value={num(withData.length)} hint="Fingerprint match = present, not necessarily accessible" />
         <Metric label="Unverified locations" value={num(br.unverified.length)} tone={br.unverified.length ? "text-unverified" : undefined} hint="Could not be inspected by this agent" />
       </div>
       <Panel title="Asset graph" meta="Red animated edges are exposure paths from the internet." bodyClassName="p-0">
-        <div className="hidden h-[460px] md:block" role="img" aria-label="Asset graph of exposure paths; the same data is listed below.">
+        <div className="hidden h-[460px] md:block" role="group" aria-label="Asset graph of exposure paths; the same assets are listed below.">
           <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.2 }} proOptions={{ hideAttribution: true }}
             nodesConnectable={false} colorMode="system" minZoom={0.4}>
             <Background gap={24} color="var(--bg-grid)" />

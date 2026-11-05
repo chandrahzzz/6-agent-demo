@@ -20,10 +20,10 @@ export default function DashboardPage() {
       <PageHeader eyebrow="Overview" title="Dashboard"
         description="Every number on this page is computed from stored incident, verification and benchmark runs." />
       {q.isError && <ErrorState error={q.error} retry={() => q.refetch()} />}
-      {q.isLoading && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 8 }).map((_, i) => <LoadingBlock key={i} rows={1} />)}</div>}
+      {q.isLoading && <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{Array.from({ length: 8 }).map((_, i) => <LoadingBlock key={i} rows={1} />)}</div>}
       {d && (
         <div className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <Metric label="Active incidents" value={num(d.active_incidents)} tone={d.active_incidents ? "text-warning" : undefined} />
             <Metric label="Critical exposures" value={num(d.critical_exposures)} tone={d.critical_exposures ? "text-critical" : undefined} />
             <Metric label="Assets monitored" value={num(d.assets)} hint={d.assets ? `${num(d.assets_exposed)} currently exposed` : "Run a drill to discover assets"} />

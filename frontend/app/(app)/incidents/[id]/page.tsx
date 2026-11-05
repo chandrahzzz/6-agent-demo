@@ -15,10 +15,13 @@ import { RemediationTab } from "@/components/incidents/remediation-tab";
 import { VerificationTab } from "@/components/incidents/verification-tab";
 import { ErrorState, LoadingBlock } from "@/components/states";
 import { StatusChip } from "@/components/status";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ApiError, post } from "@/lib/api";
+import { post } from "@/lib/api";
 import { canApprove, useApi, useMe } from "@/lib/hooks";
 import type { Incident } from "@/lib/types";
 
@@ -37,7 +40,6 @@ function IncidentDetail() {
   const close = useMutation({
     mutationFn: () => post(`/incidents/${id}/close`, { note: "closed from console" }),
     onSuccess: () => { toast.success("Incident closed"); qc.invalidateQueries({ queryKey: ["inc", id] }); },
-    onError: (e: Error) => toast.error(e instanceof ApiError ? e.message : "Could not close"),
   });
 
   if (q.isLoading) return <LoadingBlock rows={8} />;
@@ -54,7 +56,7 @@ function IncidentDetail() {
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="label-instrument mb-1.5">{inc.ref} · {inc.exposure_type.replaceAll("_", " ")}</p>
-          <h1 className="text-2xl font-medium tracking-tight text-fg">{inc.title}</h1>
+          <h1 className="text-2xl font-medium text-balance text-fg">{inc.title}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <StatusChip status={inc.status} />
             {inc.access_verdict && <StatusChip status={inc.access_verdict} dot={false} />}
@@ -63,21 +65,40 @@ function IncidentDetail() {
           </div>
         </div>
         {canApprove(me) && inc.status !== "CLOSED" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={closable ? -1 : 0}>
-                <Button variant="outline" size="sm" className="gap-2" disabled={!closable || close.isPending} onClick={() => close.mutate()}>
-                  <Lock className="size-4" aria-hidden /> Close as fixed
-                </Button>
-              </span>
-            </TooltipTrigger>
-            {!closable && <TooltipContent>Requires the latest verification to be VERIFIED_FIXED (currently {inc.latest_verification ?? "none"}).</TooltipContent>}
-          </Tooltip>
+          <div className="flex flex-col items-start gap-1 lg:items-end">
+            {closable ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2" disabled={close.isPending}>
+                    <Lock className="size-4" aria-hidden /> Close as fixed
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Close {inc.ref} as fixed?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      The latest adversarial verification is VERIFIED_FIXED. Closing is recorded in the evidence chain and cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => close.mutate()}>Close incident</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <Button variant="outline" size="sm" className="gap-2" disabled aria-describedby="close-hint">
+                <Lock className="size-4" aria-hidden /> Close as fixed
+              </Button>
+            )}
+            {!closable && <p id="close-hint" className="text-xs text-fg-subtle">Needs latest verification VERIFIED_FIXED (now {inc.latest_verification ?? "none"})</p>}
+            {close.error && <p role="alert" className="text-xs text-critical">{close.error.message}</p>}
+          </div>
         )}
       </div>
 
       <Tabs value={tab} onValueChange={(v) => router.replace(`/incidents/${id}?tab=${v}`, { scroll: false })}>
-        <div className="-mx-4 mb-4 overflow-x-auto overflow-y-hidden border-b border-line px-4 sm:mx-0 sm:px-0">
+        <div className="-mx-4 mb-4 overflow-x-auto overflow-y-hidden border-b border-line px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
           <TabsList className="h-10 w-max justify-start gap-1 rounded-none bg-transparent p-0">
             {TABS.map(([v, label]) => (
               <TabsTrigger key={v} value={v}

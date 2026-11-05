@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Crosshair, RotateCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Panel } from "@/components/panel";
@@ -79,9 +79,8 @@ export function VerificationTab({ incidentId, live }: { incidentId: string; live
   const { data: me } = useMe();
   const qc = useQueryClient();
   const runs = q.data?.items ?? [];
-  const [sel, setSel] = useState<number | null>(null);
-  useEffect(() => setSel(null), [runs.length]);
-  const run = sel !== null ? runs[sel] : runs[runs.length - 1];
+  const [selId, setSelId] = useState<string | null>(null);
+  const run = runs.find((r) => r.id === selId) ?? runs[runs.length - 1];
   const m = useMutation({
     mutationFn: () => post(`/verification/${incidentId}/run`),
     onSuccess: () => { toast.success("Verification started from external_net"); qc.invalidateQueries({ queryKey: ["inc", incidentId] }); },
@@ -99,8 +98,8 @@ export function VerificationTab({ incidentId, live }: { incidentId: string; live
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="label-instrument mr-1">Runs</span>
-        {runs.map((r, i) => (
-          <Button key={r.id} size="xs" variant={r.id === run.id ? "secondary" : "ghost"} onClick={() => setSel(i)} aria-pressed={r.id === run.id}
+        {runs.map((r) => (
+          <Button key={r.id} size="xs" variant={r.id === run.id ? "secondary" : "ghost"} onClick={() => setSelId(r.id)} aria-pressed={r.id === run.id}
             className="gap-1.5 font-mono">
             {r.ref} <StatusChip status={r.verdict ?? r.status} dot={false} className="h-4 border-0 bg-transparent px-0 text-[0.625rem]" />
           </Button>
@@ -130,8 +129,8 @@ export function VerificationTab({ incidentId, live }: { incidentId: string; live
                   const good = edge ? c.reachable : !c.reachable;
                   return (
                     <li key={c.target} className="flex justify-between gap-3">
-                      <span className="text-fg-muted">{c.target} <span className="text-fg-subtle">· {edge ? "should be reachable" : "must be unreachable"}</span></span>
-                      <span className={good ? "text-ok" : "text-critical"}>{c.reachable ? "reachable" : c.result.toLowerCase().replace("_", " ")}</span>
+                      <span className="min-w-0 text-fg-muted">{c.target}<span className="block text-fg-subtle sm:ml-1 sm:inline">{edge ? "should be reachable" : "must be unreachable"}</span></span>
+                      <span className={cn("shrink-0", good ? "text-ok" : "text-critical")}>{c.reachable ? "reachable" : c.result.toLowerCase().replace("_", " ")}</span>
                     </li>
                   );
                 })}

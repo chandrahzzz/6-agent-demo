@@ -53,7 +53,7 @@ function MetricGrid({ m }: { m: SetMetrics }) {
     ["Lite recommendations", pct(m.lite_recommendations), `n = ${m.lite_recommendations.n}`],
   ];
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       {tiles.map(([l, v, h]) => <Metric key={l} label={l} value={v} hint={h} />)}
     </div>
   );

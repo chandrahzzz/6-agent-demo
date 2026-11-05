@@ -76,7 +76,7 @@
   --radius-lg: calc(var(--radius) + 1px);
   --shadow-soft: var(--shadow-soft);
 
-  --animate-reveal: reveal 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-reveal: reveal 300ms ease-out both;
   --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
 }
 
@@ -95,20 +95,29 @@
   body {
     @apply bg-background text-fg font-sans text-sm antialiased;
     font-feature-settings: "ss02", "cv01";
+  }
+  /* The hairline grid lives on its own fixed layer so scrolling never repaints the full viewport. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background-image:
       linear-gradient(var(--bg-grid) 1px, transparent 1px),
       linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
     background-size: 24px 24px;
-    background-attachment: fixed;
   }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
   ::selection { background: var(--accent-soft); }
   .tabular, td, .mono { font-variant-numeric: tabular-nums; }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   }
 }
 
 @layer components {
-  .label-instrument { @apply font-mono text-xs uppercase tracking-[0.08em] text-fg-subtle; }
+  .label-instrument { @apply font-mono text-xs uppercase text-fg-subtle; }
 }

@@ -24,7 +24,7 @@ export function VerdictBanner({ verdict, residual, reasons, runRef }: { verdict:
         <Icon className={cn("size-7 shrink-0", toneText[t])} aria-hidden />
         <div className="min-w-0 flex-1">
           <p className="label-instrument">Adversarial verification · {runRef}</p>
-          <p className={cn("font-mono text-2xl font-semibold tracking-wide", toneText[t])}>{verdict.replaceAll("_", " ")}</p>
+          <p className={cn("font-mono text-2xl font-semibold", toneText[t])}>{verdict.replaceAll("_", " ")}</p>
         </div>
         <p className="text-meta text-fg-muted sm:max-w-sm sm:text-right">{c.title === "Verified fixed"
           ? "External access is denied on every known path, every copy is accounted for, and the authorised consumer still works."

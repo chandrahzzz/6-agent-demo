@@ -147,7 +147,7 @@ export function EvidenceTab({ incidentId, live }: { incidentId: string; live: bo
         <ol className="divide-y divide-line">
           {d.events.map((e) => (
             <li key={e.seq}>
-              <button type="button" onClick={() => setOpen(open === e.seq ? null : e.seq)} aria-expanded={open === e.seq}
+              <button type="button" onClick={() => setOpen(open === e.seq ? null : e.seq)} aria-expanded={open === e.seq} aria-controls={`ev-${e.seq}`}
                 className="grid w-full grid-cols-[3rem_1fr] gap-x-3 px-4 py-2 text-left hover:bg-surface-2 sm:grid-cols-[3rem_9rem_1fr_auto]">
                 <span className="font-mono text-xs text-fg-subtle">#{e.seq}</span>
                 <span className="font-mono text-xs text-fg-subtle max-sm:hidden">{utc(e.ts, false)}</span>
@@ -155,7 +155,7 @@ export function EvidenceTab({ incidentId, live }: { incidentId: string; live: bo
                 <Mono className="max-sm:col-start-2">{short(e.event_hash, 14)}</Mono>
               </button>
               {open === e.seq && (
-                <div className="space-y-1 bg-background/60 px-4 py-3">
+                <div id={`ev-${e.seq}`} className="space-y-1 bg-background/60 px-4 py-3">
                   <KV k="previous_event_hash" v={e.previous_event_hash} mono />
                   <KV k="payload_hash" v={e.payload_hash} mono />
                   <KV k="event_hash" v={e.event_hash} mono />
@@ -257,8 +257,9 @@ export function DraftsTab({ incidentId }: { incidentId: string }) {
                 ["start_time", "Clock starts (your local time)", "datetime-local"], ["deadline_hours", "Window in hours", "number"]] as const).map(([name, label, type]) => (
                 <div key={name} className="space-y-1">
                   <Label htmlFor={`ob-${name}`}>{label}</Label>
-                  <Input id={`ob-${name}`} type={type} {...form.register(name)} aria-invalid={!!form.formState.errors[name]} />
-                  {form.formState.errors[name] && <p className="text-xs text-critical">{form.formState.errors[name]?.message}</p>}
+                  <Input id={`ob-${name}`} type={type} {...form.register(name)} aria-invalid={!!form.formState.errors[name]}
+                    aria-describedby={form.formState.errors[name] ? `ob-${name}-err` : undefined} />
+                  {form.formState.errors[name] && <p id={`ob-${name}-err`} role="alert" className="text-xs text-critical">{form.formState.errors[name]?.message}</p>}
                 </div>
               ))}
               <Button type="submit" size="sm" disabled={m.isPending}>Record and start timer</Button>

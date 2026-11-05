@@ -46,7 +46,7 @@ export function StatusChip({ status, label, className, dot = true }: { status: s
   return (
     <span
       className={cn(
-        "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-sm border px-2 font-mono text-xs leading-none tracking-wide whitespace-nowrap uppercase",
+        "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-sm border px-2 font-mono text-xs leading-none whitespace-nowrap uppercase",
         toneBg[t], toneText[t], toneBorder[t], className,
       )}
     >

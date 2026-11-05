@@ -9,7 +9,9 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -84,7 +86,6 @@ function DemoButton() {
       toast.success("Demo started: sandbox resetting, HERO-01 running");
       router.push(`/drills/${d.id}`);
     },
-    onError: (e: Error) => toast.error(e.message),
   });
   if (!canOperate(me)) return null;
   return (
@@ -94,15 +95,16 @@ function DemoButton() {
         <span className="hidden sm:inline">Demo Mode</span>
         <span className="sm:hidden">Demo</span>
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Run Demo Mode</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) m.reset(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset the sandbox and run Demo Mode?</AlertDialogTitle>
+            <AlertDialogDescription>
               Resets the Meridian Bank sandbox from its seed and runs HERO-01 (public customer backup) end to end with real
               attacker traffic, real remediation and adversarial verification. It pauses for your approval.
-            </DialogDescription>
-          </DialogHeader>
+              {" "}Current incidents in the sandbox are cleared.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           <div className="flex items-start justify-between gap-4 rounded-md border border-warning/40 bg-warning-soft p-3">
             <div>
               <Label htmlFor="auto" className="text-sm text-fg">Presenter auto-approve</Label>
@@ -113,12 +115,13 @@ function DemoButton() {
             </div>
             <Switch id="auto" checked={auto} onCheckedChange={setAuto} />
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+          {m.error && <p role="alert" className="text-xs text-critical">{m.error.message}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <Button onClick={() => m.mutate()} disabled={m.isPending}>{m.isPending ? "Starting…" : "Reset sandbox and run"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -148,7 +151,7 @@ function UserMenu() {
           </span>
           <span className="hidden text-left leading-tight md:block">
             <span className="block text-meta text-fg">{me.name}</span>
-            <span className="block font-mono text-[0.625rem] tracking-wide text-fg-subtle">{me.role}</span>
+            <span className="block font-mono text-[0.625rem] text-fg-subtle">{me.role}</span>
           </span>
         </Button>
       </DropdownMenuTrigger>
@@ -218,7 +221,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-background/90 px-4 backdrop-blur-[2px] sm:gap-3">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-background px-4 sm:gap-3">
           <Sheet open={mobile} onOpenChange={setMobile}>
             <SheetTrigger asChild>
               <Button size="icon-sm" variant="ghost" className="lg:hidden" aria-label="Open navigation">
@@ -232,7 +235,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </SheetContent>
           </Sheet>
           <div className="lg:hidden"><Wordmark compact /></div>
-          <span className="inline-flex h-7 items-center gap-2 rounded-sm border border-line bg-surface px-2.5 font-mono text-xs tracking-wide text-fg-muted">
+          <span className="inline-flex h-7 items-center gap-2 rounded-sm border border-line bg-surface px-2.5 font-mono text-xs text-fg-muted">
             <span aria-hidden className="size-1.5 rounded-full bg-warning" />
             SANDBOX<span className="hidden text-fg-subtle sm:inline">· Meridian Bank</span>
           </span>

@@ -10,6 +10,10 @@ import { KV, Panel } from "@/components/panel";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/states";
 import { StatusChip } from "@/components/status";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -132,8 +136,24 @@ export function RemediationTab({ incidentId, live }: { incidentId: string; live:
         </p>
         {canApprove(me) ? (
           <>
-            <Button size="sm" variant="ghost" disabled={!selected.length || decide.isPending} onClick={() => decide.mutate({ decision: "REJECTED", reason: "rejected in console" })}>Reject</Button>
-            <Button size="sm" variant="secondary" disabled={!selected.length || decide.isPending}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="ghost" disabled={!selected.length || decide.isPending} aria-describedby="sel-hint">Reject</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reject {selected.map((a) => a.code).join(", ")}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    A rejection is final and is recorded in the evidence chain. The exposure stays open until another action fixes it.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => decide.mutate({ decision: "REJECTED", reason: "rejected in console" })}>Reject</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Button size="sm" variant="secondary" disabled={!selected.length || decide.isPending} aria-describedby="sel-hint"
               onClick={() => (heldSelected ? setOverride({ open: true, reason: "" }) : decide.mutate({ decision: "APPROVED" }))}>
               Approve {selected.length ? `(${selected.length})` : ""}
             </Button>
@@ -143,6 +163,12 @@ export function RemediationTab({ incidentId, live }: { incidentId: string; live:
           <Button size="sm" disabled={!ready.length || exec.isPending || live} onClick={() => exec.mutate()}>
             Execute approved {ready.length ? `(${ready.length})` : ""}
           </Button>
+        )}
+        {canApprove(me) && !selected.length && decidable.length > 0 && (
+          <p id="sel-hint" className="w-full text-xs text-fg-subtle">Select pending or held actions to approve or reject them.</p>
+        )}
+        {(decide.error || exec.error) && (
+          <p role="alert" className="w-full text-xs text-critical">{(decide.error ?? exec.error)?.message}</p>
         )}
       </Panel>
       {items.map((a) => (

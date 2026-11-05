@@ -68,7 +68,10 @@ def d02_truth(p: dict) -> dict:
 
 
 def d03_truth(p: dict) -> dict:
-    lo, n = int(p.get("start", 1000)), int(p.get("rows", 800))
+    lo = int(p.get("start", 1000))
+    # The plant slices people[lo:lo+rows]; only 5,000 customers exist, so the export holds at most 5000 - lo rows.
+    # (Bug found by held-out run 1: the generator assumed the full requested row count.)
+    n = max(0, min(lo + int(p.get("rows", 800)), len(people())) - lo)
     cached = p["access_variant"] == "B"
     in_archive = max(0, min(lo + n, ARCHIVE_ROWS) - lo)
     return {

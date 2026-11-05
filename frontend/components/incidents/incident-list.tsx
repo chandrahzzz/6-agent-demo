@@ -15,7 +15,7 @@ export function IncidentList({ items, compact }: { items: Incident[]; compact?: 
             <TableRow className="hover:bg-transparent">
               <TableHead className="label-instrument h-9 pl-4">Incident</TableHead>
               <TableHead className="label-instrument h-9">Status</TableHead>
-              <TableHead className="label-instrument h-9">Access verdict</TableHead>
+              {!compact && <TableHead className="label-instrument h-9">Access verdict</TableHead>}
               <TableHead className="label-instrument h-9 text-right">Risk</TableHead>
               {!compact && <TableHead className="label-instrument h-9">Type</TableHead>}
               <TableHead className="label-instrument h-9 pr-4 text-right">Detected</TableHead>
@@ -24,14 +24,15 @@ export function IncidentList({ items, compact }: { items: Incident[]; compact?: 
           <TableBody>
             {items.map((i) => (
               <TableRow key={i.id} className="group">
-                <TableCell className="max-w-[420px] py-2.5 pl-4">
+                <TableCell className="w-full max-w-0 py-2.5 pl-4">
                   <Link href={`/incidents/${i.id}`} className="block rounded-sm focus-visible:outline-offset-4">
                     <span className="font-mono text-xs text-fg-subtle">{i.ref}</span>
                     <span className="block truncate text-sm text-fg group-hover:text-brand-strong">{i.title}</span>
+                    {compact && i.access_verdict && <span className="mt-1 block text-xs text-fg-subtle">access verdict: {i.access_verdict.replaceAll("_", " ").toLowerCase()}</span>}
                   </Link>
                 </TableCell>
                 <TableCell><StatusChip status={i.status} /></TableCell>
-                <TableCell>{i.access_verdict ? <StatusChip status={i.access_verdict} dot={false} /> : <span className="text-fg-subtle">pending</span>}</TableCell>
+                {!compact && <TableCell>{i.access_verdict ? <StatusChip status={i.access_verdict} dot={false} /> : <span className="text-fg-subtle">pending</span>}</TableCell>}
                 <TableCell className="text-right"><RiskPill score={i.risk_score} band={i.severity} /></TableCell>
                 {!compact && <TableCell className="text-meta text-fg-muted">{humanise(i.exposure_type)}</TableCell>}
                 <TableCell className="pr-4 text-right font-mono text-xs text-fg-subtle">{ago(i.detected_at)}</TableCell>

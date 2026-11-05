@@ -1,0 +1,34 @@
+{
+ "scenario": "D-03",
+ "params": {
+  "access_variant": "B",
+  "rows": 704,
+  "start": 1687
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "PUBLIC_EXPORT_LINK",
+    "key": "meridian-exports"
+   }
+  ],
+  "verdict": "LIKELY_EXFILTRATED",
+  "root_cause": {
+   "kind": "OUT_OF_BAND_CHANGE",
+   "principal": "finance-analyst"
+  },
+  "record_count": 704,
+  "location_counts": {
+   "s3://meridian-archive/archive/2026-10/customers_full_2026-10-01.csv": 704
+  },
+  "expected_actions": [
+   "bucket.set_private",
+   "cdn.purge"
+  ],
+  "first_verification": "PARTIALLY_FIXED",
+  "residual": [
+   "CDN cache"
+  ],
+  "final_verification": "VERIFIED_FIXED"
+ }
+}

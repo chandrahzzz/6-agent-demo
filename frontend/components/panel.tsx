@@ -36,7 +36,13 @@ export function Metric({ label, value, unit, hint, tone, className }: {
   );
 }
 
+function withCode(v: React.ReactNode): React.ReactNode {
+  if (typeof v !== "string" || !v.includes("`")) return v;
+  return v.split("`").map((part, i) => (i % 2 ? <code key={i} className="rounded-[3px] bg-surface-2 px-1 font-mono text-xs">{part}</code> : part));
+}
+
 export function KV({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
+  v = withCode(v);
   return (
     <div className="grid grid-cols-[minmax(7rem,38%)_1fr] gap-3 py-1.5 text-meta">
       <dt className="text-fg-subtle">{k}</dt>
@@ -52,8 +58,8 @@ export function PageHeader({ title, eyebrow, description, actions }: {
     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow && <p className="label-instrument mb-1.5">{eyebrow}</p>}
-        <h1 className="text-2xl font-medium tracking-tight text-fg">{title}</h1>
-        {description && <p className="mt-1 max-w-2xl text-sm text-fg-muted">{description}</p>}
+        <h1 className="text-2xl font-medium text-balance text-fg">{title}</h1>
+        {description && <p className="mt-1 max-w-2xl text-sm text-pretty text-fg-muted">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>

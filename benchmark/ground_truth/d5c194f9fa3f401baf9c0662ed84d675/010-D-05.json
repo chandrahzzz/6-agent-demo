@@ -1,0 +1,28 @@
+{
+ "scenario": "D-05",
+ "params": {
+  "rows": 101,
+  "variant_seed": 4199
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "SHADOW_AI_UPLOAD",
+    "key": "quicksummarize"
+   }
+  ],
+  "verdict": "LIKELY_EXFILTRATED",
+  "root_cause": {
+   "kind": "SHADOW_IT",
+   "principal": "arjun.k"
+  },
+  "record_count": 101,
+  "expected_actions": [
+   "integration.block_vendor",
+   "vendor.ai_delete_uploads"
+  ],
+  "first_verification": "VERIFIED_FIXED",
+  "residual": [],
+  "final_verification": "VERIFIED_FIXED"
+ }
+}

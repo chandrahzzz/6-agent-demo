@@ -1,0 +1,16 @@
+{
+ "scenario": "HEALTH-DATA-EXPOSURE",
+ "params": {
+  "variant_seed": 3397
+ },
+ "truth": {
+  "incidents": [
+   {
+    "type": "LITE:HEALTH-DATA-EXPOSURE",
+    "key": "db://meridian/health_claims"
+   }
+  ],
+  "verdict": "EXPOSED_NOT_ACCESSED",
+  "lite": true
+ }
+}

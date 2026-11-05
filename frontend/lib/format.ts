@@ -1,4 +1,4 @@
-export const nf = new Intl.NumberFormat("en-IN");
+export const nf = new Intl.NumberFormat("en-US");
 
 export function num(n: number | null | undefined): string {
   return n === null || n === undefined ? "—" : nf.format(n);
