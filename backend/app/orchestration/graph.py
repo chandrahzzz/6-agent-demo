@@ -14,7 +14,7 @@ from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy import select
 
-from ..agents import base, blast_radius, compliance, investigation, remediation, verification
+from ..agents import base, blast_radius, compliance, investigation, lite, remediation, verification
 from ..core import events
 from ..core.db import session_scope
 from ..models import BlastRadius, Finding, Incident, Investigation, now
@@ -149,6 +149,31 @@ def verify_only_graph():
     g.add_conditional_edges("verify", _route, {"pack": "pack", "replan": "replan"})
     g.add_edge("replan", END)
     g.add_edge("pack", END)
+    return g.compile()
+
+
+def n_lite_investigate(s: State) -> State:
+    t0 = time.monotonic()
+    base.run("investigation", lite.investigate, incident_id=s["incident_id"], drill_id=s.get("drill_id"))
+    return {"timings": _timed(s, "verdict_ms", t0)}
+
+
+def n_lite_recommend(s: State) -> State:
+    base.run("remediation", lite.recommend, incident_id=s["incident_id"], drill_id=s.get("drill_id"))
+    _save_timings(s["incident_id"], s.get("timings") or {})
+    return {}
+
+
+def lite_graph():
+    """Lite scenarios: verdict + recommendation; no live remediation or verification."""
+    g = StateGraph(State)
+    g.add_node("investigation", n_lite_investigate)
+    g.add_node("risk", n_risk)
+    g.add_node("recommend", n_lite_recommend)
+    g.add_edge(START, "investigation")
+    g.add_edge("investigation", "risk")
+    g.add_edge("risk", "recommend")
+    g.add_edge("recommend", END)
     return g.compile()
 
 

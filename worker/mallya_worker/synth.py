@@ -102,7 +102,7 @@ def customers(seed: int, n: int = 5000) -> list[Customer]:
             third_party_consent="granted" if r.random() < 0.35 else "not_given",
             retention_class=r.choice(["standard-8y", "standard-8y", "kyc-10y"]),
             retain_until=created + timedelta(days=365 * 8),
-            retention_last_reviewed=None if r.random() < 0.07 else date(2026, 1, 1) + timedelta(days=r.randrange(0, 200)),
+            retention_last_reviewed=date(2026, 1, 1) + timedelta(days=r.randrange(0, 200)),
         ))
     return out
 

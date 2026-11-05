@@ -76,6 +76,11 @@ def seed(seed_value: int) -> dict:
       ('INT-MAIL','Acme Mailer','Transactional email','http://mock-vendor:7000/acme/v1',
         TRUE, FALSE, 'email', 'send:write', 'send:write', :mail_exp, 'ROPA-001')""",
                      nw_exp=now + timedelta(days=45), mail_exp=now + timedelta(days=200))
+    meridian.execute("""INSERT INTO data_inventory VALUES ('customers', TRUE, 'core-banking'),
+      ('consent_records', TRUE, 'core-banking'), ('retention_records', TRUE, 'data-governance'),
+      ('marketing_campaign_members', TRUE, 'marketing'), ('health_claims', TRUE, 'insurance'),
+      ('qa_fixture_cases', FALSE, 'qa'), ('integration_registry', FALSE, 'it'), ('integration_jobs', FALSE, 'it'),
+      ('ropa_entries', FALSE, 'dpo')""")
     meridian.execute("""INSERT INTO integration_jobs VALUES
       ('JOB-NW-SYNC','INT-NW','marketing_campaign_members', FALSE, NULL, FALSE)""")
     scan.index(refresh=True)
@@ -83,8 +88,9 @@ def seed(seed_value: int) -> dict:
     # 2. object storage
     storage.ensure_principals()
     c = storage.root()
+    for extra in c.list_buckets():  # anything a previous scenario created
+        storage.wipe_bucket(extra.name)
     for b in storage.BUCKETS:
-        storage.wipe_bucket(b)
         c.make_bucket(b)
         storage.put_bytes(b, CANARY_KEY, canary_body(b, seed_value), "text/plain")
     backup = synth.customers_csv(people)

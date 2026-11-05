@@ -109,6 +109,12 @@ def run_drill(drill_id: str) -> None:
                 chain.append(iid, "incident.detected", "agent:exposure_hunter",
                              {"ref": inc.ref, "title": inc.title, "scope": inc.scope, "detected_at": inc.detected_at.isoformat()}, db=db)
             _beat(drill_id, "Exposure detected", incident_id=iid)
+            with session_scope() as db:
+                is_lite = db.get(Incident, iid).exposure_type.startswith("LITE:")
+            if is_lite:
+                graph.lite_graph().invoke({"incident_id": iid, "drill_id": drill_id, "timings": {}})
+                _beat(drill_id, "Lite scenario: verdict and recommended fix recorded (no live remediation)", incident_id=iid)
+                continue
             state = graph.triage_graph().invoke({"incident_id": iid, "drill_id": drill_id, "timings": {}})
             if auto:
                 with session_scope() as db:

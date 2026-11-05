@@ -24,8 +24,25 @@ LITE_IDS = ["UNENCRYPTED-STORAGE", "EXCESSIVE-DB-PERMISSIONS", "EXPOSED-POSTGRES
             "AADHAAR-DISCOVERY", "HEALTH-DATA-EXPOSURE", "UNAPPROVED-API", "VENDOR-OVERPERMISSION", "VENDOR-CREDENTIAL-EXPIRY",
             "MISSING-ROPA-ENTRY", "UNREVIEWED-DATA-RETENTION", "UNAPPROVED-AI-VENDOR", "AI-TRAINING-DATA-LEAK",
             "SHARED-DRIVE-EXPOSURE"]
-LITE = [{"id": i, "name": i, "tier": "lite", "description": "", "hard_part": "", "variants": {}} for i in LITE_IDS]
-IMPLEMENTED = {"HERO-01", "D-02", "D-03", "D-04", "D-05"}
+LITE_DESC = {
+    "UNENCRYPTED-STORAGE": "A bucket declares server-side encryption but its customer files are stored unencrypted.",
+    "EXCESSIVE-DB-PERMISSIONS": "A read-only analytics role holds write privileges on the customer table.",
+    "EXPOSED-POSTGRES": "A legacy Postgres login role still accepts its default credential.",
+    "DATABASE-BACKUP-DRIFT": "A customer dump sits in a bucket infra-config does not know about.",
+    "PAN-DISCOVERY": "A new table outside the data catalogue holds PAN-format identifiers.",
+    "AADHAAR-DISCOVERY": "Aadhaar-format identifiers in a bucket not classified for personal data.",
+    "HEALTH-DATA-EXPOSURE": "Health claims with ICD-10 diagnoses are readable by every database role.",
+    "UNAPPROVED-API": "Customer phone numbers sent to an unregistered SMS API that keeps no inspectable payload.",
+    "VENDOR-OVERPERMISSION": "A vendor integration holds scopes it does not need.",
+    "VENDOR-CREDENTIAL-EXPIRY": "A vendor credential has expired but the integration is still active.",
+    "MISSING-ROPA-ENTRY": "An approved integration processes personal data with no record of processing.",
+    "UNREVIEWED-DATA-RETENTION": "Customer records past their retention date with no review.",
+    "UNAPPROVED-AI-VENDOR": "An unapproved AI tool is in use; the uploaded content has no personal data.",
+    "AI-TRAINING-DATA-LEAK": "An approved AI vendor may train on uploaded customer data (training opt-in on).",
+    "SHARED-DRIVE-EXPOSURE": "A file with identifiers on the shared drive is readable by an all-staff group.",
+}
+LITE = [{"id": i, "name": i, "tier": "lite", "description": LITE_DESC[i], "hard_part": "", "variants": {}} for i in LITE_IDS]
+IMPLEMENTED = {"HERO-01", "D-02", "D-03", "D-04", "D-05", *LITE_IDS}
 
 
 def all_scenarios() -> list[dict]:

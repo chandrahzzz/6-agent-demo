@@ -8,6 +8,7 @@ from sqlalchemy import select
 from .. import connectors
 from ..core.db import session_scope
 from ..models import Finding, Incident
+from . import lite
 from .base import AgentOutput, Ctx
 from .registry import next_incident_ref, relate, upsert_asset
 
@@ -104,6 +105,10 @@ def sweep(ctx: Ctx) -> AgentOutput:
 
     incident_ids = _group_into_incidents(ctx, inv, findings)
     incident_ids += _integration_checks(ctx, exposures)
+    ctx.step("Running lite governance checks (encryption, grants, catalogue, vendors, retention, AI use)")
+    lite_found = connectors.worker("GET", "/checks/lite")
+    exposures += [f"{f['check']}: {f['title']}" for f in lite_found]
+    incident_ids += lite.create_incidents(ctx, lite_found)
     summary = ctx.summarise("hunter.summary", {"assets_scanned": scanned, "exposures": exposures,
                                                "decoys_rejected": decoys})
     return AgentOutput(summary=summary, confidence=0.95 if exposures else 0.9,

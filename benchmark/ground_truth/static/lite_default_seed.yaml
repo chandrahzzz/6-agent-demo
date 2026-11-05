@@ -1,0 +1,18 @@
+# HIDDEN GROUND TRUTH — read only by benchmark/evaluation and tests. Never by agents.
+# Expected outcome of each Lite scenario on the default seed (SEED=42).
+# verdict: the investigation verdict MALLYA should reach from the evidence the check can see.
+UNENCRYPTED-STORAGE:        {asset: "s3://meridian-kyc-uploads", verdict: EXPOSED_NOT_ACCESSED}
+EXCESSIVE-DB-PERMISSIONS:   {asset: "db://meridian/customers", verdict: EXPOSED_NOT_ACCESSED}
+EXPOSED-POSTGRES:           {asset: "db://meridian/role/legacy_report", verdict: EXPOSED_NOT_ACCESSED}
+DATABASE-BACKUP-DRIFT:      {asset: "s3://meridian-tmp-dumps", verdict: EXPOSED_NOT_ACCESSED}
+PAN-DISCOVERY:              {asset: "db://meridian/loan_applications", verdict: EXPOSED_NOT_ACCESSED}
+AADHAAR-DISCOVERY:          {asset: "s3://meridian-exports/ops/aadhaar-verification-batch.csv", verdict: EXPOSED_NOT_ACCESSED}
+HEALTH-DATA-EXPOSURE:       {asset: "db://meridian/health_claims", verdict: EXPOSED_NOT_ACCESSED}
+UNAPPROVED-API:             {asset: "vendor://fastsms", verdict: INSUFFICIENT_EVIDENCE}
+VENDOR-OVERPERMISSION:      {asset: "vendor://INT-NW", verdict: EXPOSED_NOT_ACCESSED}
+VENDOR-CREDENTIAL-EXPIRY:   {asset: "vendor://INT-MAIL", verdict: EXPOSED_NOT_ACCESSED}
+MISSING-ROPA-ENTRY:         {asset: "vendor://INT-ANX", verdict: EXPOSED_NOT_ACCESSED}
+UNREVIEWED-DATA-RETENTION:  {asset: "db://meridian/retention_records", verdict: EXPOSED_NOT_ACCESSED}
+UNAPPROVED-AI-VENDOR:       {asset: "vendor://quicksummarize", verdict: FALSE_POSITIVE}
+AI-TRAINING-DATA-LEAK:      {asset: "vendor://quicksummarize", verdict: LIKELY_EXFILTRATED}
+SHARED-DRIVE-EXPOSURE:      {asset: "s3://meridian-internal-docs/drive/branch-callbacks.md", verdict: EXPOSED_NOT_ACCESSED}

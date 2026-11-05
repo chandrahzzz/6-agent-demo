@@ -13,7 +13,7 @@ import os
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from . import actions, checks, infra, meridian, scan, scenarios, seed, storage
+from . import actions, checks, infra, lite, meridian, scan, scenarios, seed, storage
 from .clients import cdn_admin, iam, vendor
 from .config import settings
 
@@ -90,7 +90,7 @@ def do_seed(req: SeedReq) -> dict:
 
 @app.post("/scenarios/{scenario_id}/setup", dependencies=A)
 def setup(scenario_id: str, req: SetupReq) -> dict:
-    fn = scenarios.SETUP.get(scenario_id)
+    fn = scenarios.SETUP.get(scenario_id) or lite.SETUP.get(scenario_id)
     if not fn:
         raise HTTPException(status_code=404, detail="unknown scenario")
     return fn(req.params)
@@ -255,6 +255,11 @@ def patch_preview(bucket: str, reclassify: str | None = None) -> dict:
 @app.get("/checks/consent-sync", dependencies=A)
 def check_consent(include_fingerprints: bool = False) -> list[dict]:
     return checks.consent_sync(include_fingerprints)
+
+
+@app.get("/checks/lite", dependencies=A)
+def check_lite() -> list[dict]:
+    return lite.run_checks()
 
 
 @app.get("/checks/egress", dependencies=A)

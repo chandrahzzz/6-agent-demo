@@ -55,12 +55,12 @@ def _bucket_block(name: str, classification: str, public: bool, extra: dict) -> 
 
 
 BASE_BUCKETS = [
-    ("meridian-customer-backups", "pii", {"owner": "data-platform", "encryption": "sse-s3", "replicate_to": "meridian-backups-replica"}),
-    ("meridian-archive", "pii", {"owner": "data-platform", "encryption": "sse-s3", "retention": "10y"}),
-    ("meridian-exports", "confidential", {"owner": "finance-analytics", "encryption": "sse-s3"}),
-    ("meridian-internal-docs", "internal", {"owner": "workplace-it", "encryption": "sse-s3"}),
+    ("meridian-customer-backups", "pii", {"owner": "data-platform", "encryption": "platform-disk", "replicate_to": "meridian-backups-replica"}),
+    ("meridian-archive", "pii", {"owner": "data-platform", "encryption": "platform-disk", "retention": "10y"}),
+    ("meridian-exports", "confidential", {"owner": "finance-analytics", "encryption": "platform-disk"}),
+    ("meridian-internal-docs", "internal", {"owner": "workplace-it", "encryption": "platform-disk"}),
 ]
-REPLICA = ("meridian-backups-replica", "pii", {"owner": "data-platform", "encryption": "sse-s3", "replica_of": "meridian-customer-backups"})
+REPLICA = ("meridian-backups-replica", "pii", {"owner": "data-platform", "encryption": "platform-disk", "replica_of": "meridian-customer-backups"})
 
 
 def render(buckets: list[tuple[str, str, dict]], public: set[str]) -> str:

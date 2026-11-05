@@ -220,6 +220,20 @@ async def nw_delivery_link(link: DeliveryLink, request: Request, x_api_key_id: s
     return {"accepted": True}
 
 
+# ---------------------------------------------------------------- any other (unregistered) vendor API
+@app.post("/{vendor_name}/v1/{rest:path}")
+async def generic_vendor(vendor_name: str, rest: str, request: Request, x_api_key_id: str = Header(default="")) -> dict:
+    """Catch-all for vendors with no dedicated mock. Logs the call; the payload is NOT retained,
+    so content can only be inferred from metadata (bytes, endpoint, caller)."""
+    body = await request.body()
+    with _lock:
+        con = _db()
+        _log(con, vendor_name, request, len(body), 202, x_api_key_id or None)
+        con.commit()
+        con.close()
+    return {"accepted": True}
+
+
 # ---------------------------------------------------------------- call log
 @app.get("/admin/calls", dependencies=[Depends(admin)])
 def calls(since_id: int = 0) -> list[dict]:

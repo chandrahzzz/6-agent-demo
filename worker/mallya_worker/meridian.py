@@ -12,7 +12,8 @@ from .synth import Customer
 SCHEMA = """
 DROP TABLE IF EXISTS customers, consent_records, retention_records, synthetic_registry, qa_fixture_cases,
   marketing_campaign_members, integration_registry, integration_jobs, ropa_entries, health_claims,
-  worker_stats, scan_log, executed_actions CASCADE;
+  worker_stats, scan_log, executed_actions, data_inventory, loan_applications CASCADE;
+DROP ROLE IF EXISTS analytics_ro, legacy_report;
 
 CREATE TABLE customers (
   customer_id TEXT PRIMARY KEY, account_id TEXT NOT NULL, full_name TEXT NOT NULL, pan_number TEXT NOT NULL,
@@ -40,6 +41,8 @@ CREATE TABLE integration_jobs (
 CREATE TABLE ropa_entries (ropa_ref TEXT PRIMARY KEY, activity TEXT NOT NULL, purpose TEXT NOT NULL, lawful_basis TEXT NOT NULL);
 CREATE TABLE health_claims (claim_id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, diagnosis_code TEXT NOT NULL, amount_inr INTEGER NOT NULL);
 CREATE TABLE worker_stats (k TEXT PRIMARY KEY, v BIGINT NOT NULL DEFAULT 0);
+-- the data catalogue: tables known to hold personal data (anything else holding identifiers is 'discovered')
+CREATE TABLE data_inventory (table_name TEXT PRIMARY KEY, holds_personal_data BOOLEAN NOT NULL, owner TEXT NOT NULL);
 """
 
 
@@ -50,6 +53,9 @@ def engine() -> Engine:
 
 def reset_schema() -> None:
     with engine().begin() as con:
+        for role in ("analytics_ro", "legacy_report"):  # roles planted by lite scenarios
+            if con.execute(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": role}).first():
+                con.execute(text(f'REVOKE ALL ON DATABASE meridian FROM "{role}"'))
         for stmt in SCHEMA.split(";"):
             if stmt.strip():
                 con.execute(text(stmt))
