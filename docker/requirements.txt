@@ -1,0 +1,19 @@
+# One dependency set for every Python service (backend, worker, sandbox mocks, probes).
+# A single shared image keeps disk use low; each service only mounts the code it needs.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+pydantic-settings>=2.4
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.2
+alembic>=1.13
+redis>=5.0
+langgraph>=0.2
+httpx>=0.27
+argon2-cffi>=23.1
+cryptography>=43
+pyyaml>=6.0
+minio>=7.2
+reportlab>=4.2
+pytest>=8.3
+pytest-timeout>=2.3

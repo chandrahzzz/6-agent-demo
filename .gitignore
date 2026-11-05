@@ -1,0 +1,20 @@
+.env
+*.pem
+*.key
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.next/
+frontend/test-results/
+frontend/playwright-report/
+# generated at seed time (a real git repo of its own)
+sandbox/infra-config/
+# generated benchmark artefacts
+benchmark/results/
+benchmark/ground_truth/*.json
+benchmark/holdout/generated/
+exports/
+*.zip
+.DS_Store

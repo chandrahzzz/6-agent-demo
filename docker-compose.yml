@@ -1,0 +1,273 @@
+# MALLYA sandbox + control plane. Everything here is local and synthetic.
+#
+# Networks (SPEC 4.1):
+#   customer_net : backend, worker, postgres, redis, minio, mock-iam, mock-vendor, cdn-admin, nginx (internal side)
+#   external_net : nginx (public side), attacker, verifier   <- probes can only reach MinIO through nginx
+#   ui_net       : frontend <-> backend only (keeps the browser-facing app off the customer network)
+name: mallya
+
+x-py: &py
+  image: mallya-py:dev
+  build:
+    context: .
+    dockerfile: docker/python.Dockerfile
+  restart: unless-stopped
+
+networks:
+  customer_net:
+    ipam:
+      config: [{ subnet: 172.28.0.0/24 }]
+  external_net:
+    ipam:
+      config: [{ subnet: 172.29.0.0/24 }]
+  ui_net:
+    ipam:
+      config: [{ subnet: 172.30.0.0/24 }]
+
+volumes:
+  pgdata:
+  miniodata:
+  nginx_cache:
+  nginx_logs:
+  iam_state:
+  vendor_state:
+  mallya_secrets:
+  evidence_exports:
+  frontend_node_modules:
+  frontend_next:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MALLYA_DB_PASSWORD: ${MALLYA_DB_PASSWORD}
+      MERIDIAN_DB_PASSWORD: ${MERIDIAN_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sandbox/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    networks:
+      customer_net: { ipv4_address: 172.28.0.10 }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      customer_net: { ipv4_address: 172.28.0.11 }
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 30
+
+  minio:
+    image: bitnamilegacy/minio:2025.7.23
+    restart: unless-stopped
+    entrypoint: ["/opt/bitnami/minio/bin/minio"]
+    command: ["server", "/bitnami/minio/data", "--address", ":9000"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      # Real access logs: MinIO audit webhook -> backend (SPEC 4.3)
+      MINIO_AUDIT_WEBHOOK_ENABLE_mallya: "on"
+      MINIO_AUDIT_WEBHOOK_ENDPOINT_mallya: http://backend:8000/internal/minio-audit
+      MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_mallya: ${MINIO_AUDIT_TOKEN}
+      MINIO_AUDIT_WEBHOOK_QUEUE_DIR_mallya: /bitnami/minio/data/.audit-queue
+    volumes:
+      - miniodata:/bitnami/minio/data
+    networks:
+      customer_net: { ipv4_address: 172.28.0.12 }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 3s
+      retries: 40
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./sandbox/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_cache:/var/cache/nginx/cdn
+      - nginx_logs:/var/log/mallya
+    networks:
+      customer_net:
+        ipv4_address: 172.28.0.20
+        aliases: [cdn.meridian.sandbox]
+      external_net:
+        ipv4_address: 172.29.0.20
+        aliases: [cdn.meridian.sandbox]
+    ports:
+      - "127.0.0.1:8080:8080"   # public CDN edge, exposed on localhost only for manual poking
+    depends_on: [minio]
+
+  cdn-admin:
+    <<: *py
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000", "--app-dir", "/app/svc"]
+    environment:
+      CDN_ADMIN_TOKEN: ${CDN_ADMIN_TOKEN}
+      CACHE_DIR: /var/cache/nginx/cdn
+      CDN_INTERNAL_URL: http://cdn.meridian.sandbox:8080
+    volumes:
+      - ./sandbox/cdn-admin:/app/svc:ro
+      - nginx_cache:/var/cache/nginx/cdn
+    networks:
+      customer_net: { ipv4_address: 172.28.0.21 }
+
+  mock-iam:
+    <<: *py
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000", "--app-dir", "/app/svc"]
+    environment:
+      MOCK_IAM_TOKEN: ${MOCK_IAM_TOKEN}
+      MINIO_ENDPOINT: minio:9000
+      CDN_PUBLIC_ENDPOINT: cdn.meridian.sandbox:8080
+      STATE_DIR: /state
+    volumes:
+      - ./sandbox/mock-iam:/app/svc:ro
+      - iam_state:/state
+    networks:
+      customer_net: { ipv4_address: 172.28.0.22 }
+
+  mock-vendor:
+    <<: *py
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000", "--app-dir", "/app/svc"]
+    environment:
+      MOCK_VENDOR_TOKEN: ${MOCK_VENDOR_TOKEN}
+      STATE_DIR: /state
+    volumes:
+      - ./sandbox/mock-vendor:/app/svc:ro
+      - vendor_state:/state
+    networks:
+      customer_net: { ipv4_address: 172.28.0.23 }
+
+  attacker:
+    <<: *py
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000", "--app-dir", "/app/svc"]
+    environment:
+      PROBE_TOKEN: ${PROBE_TOKEN}
+      CDN_URL: http://cdn.meridian.sandbox:8080
+    volumes:
+      - ./sandbox/attacker:/app/svc:ro
+    networks:
+      external_net: { ipv4_address: 172.29.0.66 }
+
+  verifier:
+    <<: *py
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000", "--app-dir", "/app/svc"]
+    environment:
+      PROBE_TOKEN: ${PROBE_TOKEN}
+      CDN_URL: http://cdn.meridian.sandbox:8080
+    volumes:
+      - ./sandbox/verifier:/app/svc:ro
+    networks:
+      external_net: { ipv4_address: 172.29.0.77 }
+
+  # Customer-side worker: the ONLY component that reads raw synthetic records.
+  # It holds FINGERPRINT_KEY and customer-side credentials. benchmark/ is NOT mounted here.
+  worker:
+    <<: *py
+    command: ["uvicorn", "mallya_worker.api:app", "--host", "0.0.0.0", "--port", "7100", "--app-dir", "/app/worker",
+              "--reload", "--reload-dir", "/app/worker", "--reload-dir", "/app/shared"]
+    environment:
+      PYTHONPATH: /app/shared:/app/worker
+      WATCHFILES_FORCE_POLLING: "true"
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      APPROVAL_SIGNING_KEY: ${APPROVAL_SIGNING_KEY}
+      FINGERPRINT_KEY: ${FINGERPRINT_KEY}
+      FINGERPRINT_KEY_VERSION: v1
+      MERIDIAN_DB_URL: postgresql+psycopg://meridian_app:${MERIDIAN_DB_PASSWORD}@postgres:5432/meridian
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      SANDBOX_SERVICE_PASSWORD: ${SANDBOX_SERVICE_PASSWORD}
+      CDN_INTERNAL_URL: http://cdn.meridian.sandbox:8080
+      CDN_ADMIN_URL: http://cdn-admin:7000
+      CDN_ADMIN_TOKEN: ${CDN_ADMIN_TOKEN}
+      MOCK_IAM_URL: http://mock-iam:7000
+      MOCK_IAM_TOKEN: ${MOCK_IAM_TOKEN}
+      MOCK_VENDOR_URL: http://mock-vendor:7000
+      MOCK_VENDOR_TOKEN: ${MOCK_VENDOR_TOKEN}
+      INFRA_CONFIG_DIR: /sandbox/infra-config
+      NGINX_LOG_PATH: /var/log/mallya/access.json
+      SEED: ${SEED}
+    volumes:
+      - ./worker:/app/worker
+      - ./shared:/app/shared:ro
+      - ./policies:/app/policies:ro
+      - ./sandbox/infra-config:/sandbox/infra-config
+      - nginx_logs:/var/log/mallya:ro
+    networks:
+      customer_net: { ipv4_address: 172.28.0.30 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+
+  backend:
+    <<: *py
+    command: ["sh", "/app/backend/entrypoint.sh"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEMO_MODE: ${DEMO_MODE}
+      SEED: ${SEED}
+      PYTHONPATH: /app/shared:/app/backend
+      WATCHFILES_FORCE_POLLING: "true"
+      DATABASE_URL: postgresql+psycopg://mallya_app:${MALLYA_DB_PASSWORD}@postgres:5432/mallya
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      WORKER_URL: http://worker:7100
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      APPROVAL_SIGNING_KEY: ${APPROVAL_SIGNING_KEY}
+      PROBE_GATEWAY_URL: http://nginx:9100
+      PROBE_TOKEN: ${PROBE_TOKEN}
+      CDN_ADMIN_URL: http://cdn-admin:7000
+      CDN_ADMIN_TOKEN: ${CDN_ADMIN_TOKEN}
+      MOCK_IAM_URL: http://mock-iam:7000
+      MOCK_IAM_TOKEN: ${MOCK_IAM_TOKEN}
+      MINIO_AUDIT_TOKEN: ${MINIO_AUDIT_TOKEN}
+      EVIDENCE_SIGNING_KEY_PATH: /run/mallya-secrets/evidence_signing_key.pem
+      EVIDENCE_EXPORT_DIR: /exports
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_MODEL: ${LLM_MODEL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CORS_ORIGINS: http://localhost:3000
+      INTERNAL_CIDRS: 172.28.0.0/24
+    volumes:
+      - ./backend:/app/backend
+      - ./shared:/app/shared:ro
+      - ./benchmark:/app/benchmark
+      - ./policies:/app/policies:ro
+      - ./tools:/app/tools:ro
+      - ./docs:/app/docs
+      - mallya_secrets:/run/mallya-secrets
+      - evidence_exports:/exports
+    networks:
+      customer_net: { ipv4_address: 172.28.0.40 }
+      ui_net: { ipv4_address: 172.30.0.40 }
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  frontend:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["sh", "-c", "npm install --no-audit --no-fund && npm run dev"]
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+      WATCHPACK_POLLING: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    networks:
+      ui_net: { ipv4_address: 172.30.0.50 }
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [backend]
