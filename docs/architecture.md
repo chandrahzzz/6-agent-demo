@@ -45,7 +45,7 @@ Lite scenarios use a third graph: investigation verdict, then risk, then recomme
 
 ## Why the first HERO-01 verification is PARTIALLY_FIXED, without staging
 
-1. **The replica.** It was opened by hand for the Northwind partner, which pulls it anonymously every night. The safety check reads that dependency from the access log and HOLDS the replica action, proposing a presigned-URL handoff instead.
+1. **The replica.** It was opened by hand for the Northwind partner, which reads it anonymously (the sandbox simulates one such pull). The safety check reads that dependency from the access log and HOLDS the replica action, proposing a presigned-URL handoff instead.
 2. **The CDN cache.** Blast radius models the CDN as a path, not a store, and marks it UNVERIFIED. The verifier's external GET then gets a real `200 HIT` while the origin request gets 403.
 
 Wave 2 is planned from that evidence (handoff plus purge), and the next verification is VERIFIED_FIXED. If an analyst overrides the hold in wave 1, the cached copy still makes the first verification PARTIALLY_FIXED. Both residuals are facts the system measures.

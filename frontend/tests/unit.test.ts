@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { toneOf } from "../components/status";
+import { blockedMessage, executionPlan } from "../lib/deps";
 import { bytes, ms, num, utc } from "../lib/format";
 
 describe("status tones carry meaning only", () => {
@@ -35,5 +36,23 @@ describe("formatters", () => {
   it("renders UTC for audit display", () => {
     expect(utc("2026-11-05T09:15:12.000Z")).toBe("2026-11-05 09:15:12Z");
     expect(utc("2026-11-05T09:15:12.000Z", false)).toBe("09:15:12Z");
+  });
+});
+
+describe("remediation dependencies", () => {
+  const act = (code: string, approval_status = "PENDING", execution_status = "NOT_STARTED", depends_on: string[] = []) =>
+    ({ code, approval_status, execution_status, depends_on });
+  it("explains why an approved purge cannot run yet", () => {
+    const p = executionPlan([act("ACT-03"), act("ACT-05", "APPROVED", "NOT_STARTED", ["ACT-03"])]);
+    expect(p.order).toEqual([]);
+    expect(blockedMessage("ACT-05", p.blocked["ACT-05"])).toContain("ACT-03 (pending)");
+  });
+  it("runs the dependency first when both are approved", () => {
+    const p = executionPlan([act("ACT-05", "APPROVED", "NOT_STARTED", ["ACT-10"]), act("ACT-10", "APPROVED")]);
+    expect(p.order).toEqual(["ACT-10", "ACT-05"]);
+  });
+  it("says a rejected dependency is a dead end", () => {
+    const p = executionPlan([act("ACT-03", "REJECTED"), act("ACT-05", "APPROVED", "NOT_STARTED", ["ACT-03"])]);
+    expect(blockedMessage("ACT-05", p.blocked["ACT-05"])).toContain("cannot run");
   });
 });

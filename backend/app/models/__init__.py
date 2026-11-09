@@ -235,7 +235,7 @@ class RemediationAction(OrgMixin, Base):
     patch_diff: Mapped[str | None] = mapped_column(Text)
     safety: Mapped[dict] = mapped_column(default=dict)
     depends_on: Mapped[list] = mapped_column(default=list)
-    approval_status: Mapped[str] = mapped_column(String(16), default="PENDING")  # PENDING|HELD|APPROVED|REJECTED
+    approval_status: Mapped[str] = mapped_column(String(16), default="PENDING")  # PENDING|HELD|APPROVED|REJECTED|SUPERSEDED
     execution_status: Mapped[str] = mapped_column(String(16), default="NOT_STARTED")
     result: Mapped[dict] = mapped_column(default=dict)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)

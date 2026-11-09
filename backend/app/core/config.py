@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     llm_model: str = ""
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+    groq_api_key: str = ""
     cors_origins: str = "http://localhost:3000"
     internal_cidrs: str = "172.28.0.0/24"
     session_hours: int = 12

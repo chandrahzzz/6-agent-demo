@@ -14,7 +14,7 @@ const TONE: Record<string, Tone> = {
   Critical: "critical", High: "warning", Moderate: "info", Low: "neutral", Info: "neutral",
   // actions
   PENDING: "warning", HELD: "warning", APPROVED: "ok", REJECTED: "critical", NOT_STARTED: "neutral", RUNNING: "info",
-  SUCCEEDED: "ok", FAILED: "critical", SKIPPED: "unverified",
+  SUCCEEDED: "ok", FAILED: "critical", SKIPPED: "unverified", SUPERSEDED: "neutral",
   // probes / copy hunt
   DENIED: "ok", ACCESSIBLE: "critical", EXPOSED: "critical", PROTECTED: "ok", NO_MATCH: "neutral",
   THIRD_PARTY_COPY: "warning", DNS_FAILURE: "unverified", TIMEOUT: "unverified", CONNECTION_REFUSED: "unverified",

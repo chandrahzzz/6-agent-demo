@@ -26,6 +26,30 @@ Its AI never sees a raw customer identifier.
 | Privacy boundary | The leak scan pipes every control-plane artefact into the customer-side worker, which counts raw identifiers. A positive control proves the scanner works. |
 | Benchmark | Every number comes from a real drill. Failed runs are included. |
 
+## The six agents
+
+LangGraph orchestrates six agents in this order. Each has typed inputs and outputs, retries and timings.
+
+| # | Agent | Job |
+|---|---|---|
+| 1 | Exposure Hunter | Discovers buckets, inspects permissions and runs deterministic PII detectors on the customer side. It never uses an LLM as a detector. |
+| 2 | Investigation | Correlates CDN and origin access logs, IAM events and git history into an access verdict and a root cause. |
+| 3 | Blast Radius | Searches every known location by keyed fingerprint, maps records to consent and marks what it could not inspect as unverified. |
+| 4 | Remediation | Proposes fixes with risk and rollback, runs a safety check for legitimate dependants and executes approved actions only, in dependency order. |
+| 5 | Adversarial Verification | Runs independently of remediation. It attacks the fix from outside the network and hunts for leftover copies. When it finds residue, the graph loops back to remediation. |
+| 6 | Compliance Evidence | Drafts notices for human review (never sends them) and builds the signed, hash-chained evidence pack. |
+
+## LLM (optional)
+
+MALLYA works fully offline: with `LLM_PROVIDER=local`, short decision summaries come from deterministic templates. To have an LLM phrase those summaries instead, set the following in `.env`:
+
+```bash
+LLM_PROVIDER=groq            # or anthropic / openai
+GROQ_API_KEY=your-key-here   # .env is gitignored; never commit it
+```
+
+The model only rewrites a summary that code has already computed. Verdicts, scores and actions stay deterministic. Every call goes through the privacy gateway: a schema allow-list plus outbound DLP, with no raw identifiers. Any answer containing a number that is not in the facts is rejected. Any provider error falls back to the template, and the fallback is recorded.
+
 ## Quick start
 
 Requirements: Docker Desktop (about 3 GB free for images), Python 3.10+ on the host (for the env generator and the privacy suite).

@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { post } from "@/lib/api";
+import { blockedMessage, depStates, executionPlan, type DepState } from "@/lib/deps";
 import { utc } from "@/lib/format";
 import { canApprove, canOperate, useApi, useMe } from "@/lib/hooks";
 import type { Action } from "@/lib/types";
@@ -45,10 +46,16 @@ function Result({ a }: { a: Action }) {
   );
 }
 
-function ActionCard({ a, selectable, checked, onCheck }: { a: Action; selectable: boolean; checked: boolean; onCheck: (v: boolean) => void }) {
+function ActionCard({ a, deps, selectable, checked, onCheck }: {
+  a: Action; deps: DepState[]; selectable: boolean; checked: boolean; onCheck: (v: boolean) => void;
+}) {
   const held = a.approval_status === "HELD";
+  const superseded = a.approval_status === "SUPERSEDED";
+  const waiting = !superseded && a.approval_status !== "REJECTED" && a.execution_status !== "SUCCEEDED"
+    && deps.some((d) => d.state !== "SUCCEEDED");
   return (
-    <article className="rounded-md border border-line bg-surface" aria-labelledby={`act-${a.id}`}>
+    <article className={superseded ? "rounded-md border border-line bg-surface opacity-60" : "rounded-md border border-line bg-surface"}
+      aria-labelledby={`act-${a.id}`}>
       <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
         {selectable && <Checkbox checked={checked} onCheckedChange={(v) => onCheck(v === true)} aria-label={`Select ${a.code}`} />}
         <span className="font-mono text-sm text-fg">{a.code}</span>
@@ -68,9 +75,19 @@ function ActionCard({ a, selectable, checked, onCheck }: { a: Action; selectable
           <KV k="Risk" v={a.risk} />
           <KV k="Side effects" v={a.side_effects} />
           <KV k="Rollback" v={a.rollback_plan} />
-          {a.depends_on?.length > 0 && <KV k="Runs after" v={a.depends_on.join(", ")} mono />}
+          {deps.length > 0 && <KV k="Runs after" v={deps.map((d) => `${d.code} (${d.state.toLowerCase().replace("_", " ")})`).join(", ")} mono />}
         </dl>
       </div>
+      {waiting && (
+        <p role="status" className="mx-4 mb-3 rounded-sm border border-warning/40 bg-warning-soft p-3 text-meta text-fg">
+          {blockedMessage(a.code, deps)}
+        </p>
+      )}
+      {superseded && (
+        <p className="mx-4 mb-3 text-meta text-fg-muted">
+          Superseded: a later verification folded this into a single pending action, so it will not run.
+        </p>
+      )}
       {a.safety?.result && a.safety.result !== "N/A (config only)" && a.safety.result !== "N/A (preventive control)" && a.safety.result !== "N/A (cache)" && (
         <div className={held ? "mx-4 mb-3 rounded-sm border border-warning/40 bg-warning-soft p-3" : "mx-4 mb-3 rounded-sm border border-line p-3"}>
           <p className="label-instrument mb-1">Safety check · {a.safety.window ?? ""} {a.safety.events_examined !== undefined ? `· ${a.safety.events_examined} events read` : ""}</p>
@@ -106,7 +123,10 @@ export function RemediationTab({ incidentId, live }: { incidentId: string; live:
   const [override, setOverride] = useState<{ open: boolean; reason: string }>({ open: false, reason: "" });
   const items = useMemo(() => q.data?.items ?? [], [q.data]);
   const decidable = items.filter((a) => a.approval_status === "PENDING" || a.approval_status === "HELD");
-  const ready = items.filter((a) => a.approval_status === "APPROVED" && ["NOT_STARTED", "FAILED"].includes(a.execution_status));
+  const plan = useMemo(() => executionPlan(items), [items]);
+  const byCode = useMemo(() => new Map(items.map((a) => [a.code, a])), [items]);
+  const ready = items.filter((a) => plan.order.includes(a.code));
+  const blockedCodes = Object.keys(plan.blocked);
   const selected = decidable.filter((a) => sel.has(a.id));
   const heldSelected = selected.some((a) => a.approval_status === "HELD");
   const refresh = () => qc.invalidateQueries({ queryKey: ["inc", incidentId] });
@@ -164,6 +184,11 @@ export function RemediationTab({ incidentId, live }: { incidentId: string; live:
             Execute approved {ready.length ? `(${ready.length})` : ""}
           </Button>
         )}
+        {canOperate(me) && !ready.length && blockedCodes.length > 0 && (
+          <p className="w-full text-xs text-warning">
+            Approved but blocked: {blockedCodes.map((c) => blockedMessage(c, plan.blocked[c])).join(" ")}
+          </p>
+        )}
         {canApprove(me) && !selected.length && decidable.length > 0 && (
           <p id="sel-hint" className="w-full text-xs text-fg-subtle">Select pending or held actions to approve or reject them.</p>
         )}
@@ -172,7 +197,7 @@ export function RemediationTab({ incidentId, live }: { incidentId: string; live:
         )}
       </Panel>
       {items.map((a) => (
-        <ActionCard key={a.id} a={a} selectable={canApprove(me) && (a.approval_status === "PENDING" || a.approval_status === "HELD")}
+        <ActionCard key={a.id} a={a} deps={depStates(a, byCode)} selectable={canApprove(me) && (a.approval_status === "PENDING" || a.approval_status === "HELD")}
           checked={sel.has(a.id)} onCheck={(v) => setSel((s) => { const n = new Set(s); if (v) n.add(a.id); else n.delete(a.id); return n; })} />
       ))}
       <Dialog open={override.open} onOpenChange={(o) => setOverride((s) => ({ ...s, open: o }))}>

@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core.db import session_scope
 from app.models import LLMCall, PrivacyViolation
-from app.privacy import gateway
+from app.privacy import gateway, provider
 from mallya_common.detectors import (CONFIRMED_SYNTHETIC_TEST_VALUE, FORMAT_MATCH, STRUCTURAL_MATCH, classify_column,
                                      classify_pan, is_aadhaar_candidate)
 from mallya_common.fingerprint import FP_RE, Fingerprinter
@@ -119,7 +119,9 @@ def test_09_no_raw_aadhaar_in_llm_payload():
     assert exc.detectors.get("aadhaar") == 1 and raw not in str(exc)
 
 
-def test_13_gateway_blocks_unsafe_payloads():
+def test_13_gateway_blocks_unsafe_payloads(monkeypatch):
+    # deterministic wording for the assertion below; the live provider is exercised by the E2E drills
+    monkeypatch.setattr(provider, "OVERRIDE", "local")
     assert _blocked({"facts": {"contact": "someone@meridian-customer.test"}}).detectors.get("email")
     assert _blocked({"facts": {"m": "+91 9876543210"}}).detectors.get("phone")
     assert _blocked({"rows": [["a", "b"]]}).rule == "schema_unknown_fields"

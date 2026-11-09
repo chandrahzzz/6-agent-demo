@@ -21,3 +21,19 @@ exports/
 .DS_Store
 .playwright-mcp/
 frontend/tsconfig.tsbuildinfo
+# local env files and backups (only .env.example is committed)
+.env.*
+!.env.example
+*.backup
+*.bak.local
+# local secrets / keys
+secrets/
+*.p12
+*.pfx
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
+# assistant-local config
+CLAUDE.md
+.claude/

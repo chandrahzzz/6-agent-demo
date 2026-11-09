@@ -105,3 +105,40 @@ def test_hero01_variant_b_confirmed_download(analyst):
     assert inv["verdict"] == "LIKELY_EXFILTRATED"
     succ = inv["evidence"]["external_success"]
     assert succ and succ[0]["bytes"] > 100_000 and succ[0]["status"] == 200
+
+
+def test_hero01_rejected_fix_and_reverification_do_not_deadlock(analyst):
+    """Regression: rejecting the replica fix used to leave the approved purge waiting forever, and every
+    re-verification stacked another purge. Now: execute explains the block, re-verification re-proposes the
+    rejected fix once and keeps a single purge, and approving both reaches VERIFIED_FIXED."""
+    _, iid = _start(analyst, "A")
+    acts = analyst.get(f"/incidents/{iid}/remediation").json()["items"]
+    assert analyst.post("/approvals", json={"action_ids": [a["id"] for a in acts if a["approval_status"] == "PENDING"],
+                                            "decision": "APPROVED"}).status_code == 200
+    assert analyst.post(f"/incidents/{iid}/remediation/execute").status_code == 202
+    wait_incident_idle(analyst, iid)
+
+    acts = analyst.get(f"/incidents/{iid}/remediation").json()["items"]
+    handoff = next(a for a in acts if a["action_type"] == "partner.presigned_handoff")
+    purge = next(a for a in acts if a["action_type"] == "cdn.purge")
+    assert purge["depends_on"] == [handoff["code"]]
+    assert analyst.post("/approvals", json={"action_ids": [handoff["id"]], "decision": "REJECTED",
+                                            "reason": "testing rejection"}).status_code == 200
+    assert analyst.post("/approvals", json={"action_ids": [purge["id"]], "decision": "APPROVED"}).status_code == 200
+    r = analyst.post(f"/incidents/{iid}/remediation/execute")
+    assert r.status_code == 409 and "blocked_by_dependency" in r.text and handoff["code"] in r.text
+
+    for _ in range(2):  # re-verify twice: the old code added a new purge each time
+        assert analyst.post(f"/verification/{iid}/run").status_code == 202
+        wait_incident_idle(analyst, iid)
+    acts = analyst.get(f"/incidents/{iid}/remediation").json()["items"]
+    open_purges = [a for a in acts if a["action_type"] == "cdn.purge" and a["approval_status"] in ("PENDING", "HELD", "APPROVED")]
+    assert len(open_purges) == 1, [(a["code"], a["approval_status"]) for a in acts]
+    again = [a for a in acts if a["action_type"] == "partner.presigned_handoff" and a["approval_status"] == "PENDING"]
+    assert len(again) == 1 and handoff["code"] in again[0]["problem"]
+    assert open_purges[0]["depends_on"] == [again[0]["code"]]
+
+    assert analyst.post("/approvals", json={"action_ids": [again[0]["id"]], "decision": "APPROVED"}).status_code == 200
+    assert analyst.post(f"/incidents/{iid}/remediation/execute").status_code == 202
+    inc = wait_incident_idle(analyst, iid)
+    assert inc["status"] == "VERIFIED_FIXED", inc

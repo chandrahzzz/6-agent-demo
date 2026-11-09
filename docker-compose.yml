@@ -233,6 +233,7 @@ services:
       LLM_MODEL: ${LLM_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3100}
       INTERNAL_CIDRS: 172.28.0.0/24
     volumes:

@@ -15,6 +15,7 @@ from ...core.ratelimit import action_limit
 from ...core.security import ANY_USER, CAN_APPROVE, CAN_OPERATE
 from ...drills import engine
 from ...evidence import chain
+from ...remediation.deps import describe_blocked, execution_plan
 from ...models import (AgentExecution, Approval, BlastRadius, ComplianceDraft, EvidencePack, Finding, Incident,
                        Investigation, Obligation, RemediationAction, User, VerificationRun, now)
 from ..util import Page, get_or_404, paginate, row
@@ -162,11 +163,14 @@ def add_obligation(incident_id: str, body: ObligationIn, user: User = Depends(CA
 @router.post("/{incident_id}/remediation/execute", status_code=202, dependencies=[Depends(action_limit)])
 def execute(incident_id: str, user: User = Depends(CAN_OPERATE), db: Session = Depends(get_db)) -> dict:
     get_or_404(db, Incident, incident_id, "Incident")
-    ready = db.execute(select(RemediationAction).where(RemediationAction.incident_id == incident_id,
-                                                       RemediationAction.approval_status == "APPROVED",
-                                                       RemediationAction.execution_status.in_(["NOT_STARTED", "FAILED"]))).scalars().all()
-    if not ready:
+    every = db.execute(select(RemediationAction).where(RemediationAction.incident_id == incident_id)).scalars().all()
+    order, blocked = execution_plan(every)
+    if not order:
+        if blocked:
+            raise ApiError(409, "blocked_by_dependency",
+                           f"Nothing can run yet: {describe_blocked(blocked)}. Approve the dependency first.")
         raise ApiError(409, "nothing_approved", "No approved actions are waiting to execute.")
+    ready = [a for a in every if a.code in order]
     if not jobs.submit(f"incident:{incident_id}", engine.continue_after_approval, incident_id):
         raise ApiError(409, "busy", "This incident already has a run in progress.")
     audit("remediation.execute_requested", actor=user.email, actor_role=user.role, target_type="incident", target_id=incident_id,

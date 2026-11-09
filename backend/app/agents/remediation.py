@@ -20,6 +20,7 @@ from ..investigation.verdict import classify_ip
 from ..models import (AccessEvent, Approval, Finding, Incident, Investigation, RemediationAction, SubjectSet,
                       VerificationRun, now)
 from ..remediation.approvals import mint
+from ..remediation.deps import execution_plan, is_open
 from .base import AgentOutput, Ctx
 
 SAFETY_WINDOW_EVENTS = 200
@@ -186,15 +187,30 @@ def replan(ctx: Ctx, run_id: str) -> AgentOutput:
         cached += [c["location"].removeprefix("cdn://cdn.meridian.sandbox") for c in run.copy_hunt
                    if c["kind"] == "cdn" and c.get("accessible") and c["location"].removeprefix("cdn://cdn.meridian.sandbox") not in cached]
         for b in sorted(open_buckets):
-            existing = next((a for a in actions if a.target == f"s3://{b}" and a.execution_status != "SUCCEEDED"), None)
-            if existing and existing.approval_status == "HELD":
-                existing.approval_status = "PENDING"
-                existing.wave = wave
-                existing.safety = {**existing.safety, "reconsidered": f"verification {run.ref} proved {b} still serves data externally"}
+            mine = [a for a in actions if a.target == f"s3://{b}" and a.execution_status != "SUCCEEDED"]
+            live = [a for a in mine if is_open(a)]
+            held = next((a for a in live if a.approval_status == "HELD"), None)
+            if held:
+                held.approval_status = "PENDING"
+                held.wave = wave
+                held.safety = {**held.safety, "reconsidered": f"verification {run.ref} proved {b} still serves data externally"}
                 chain.append(inc.id, "remediation.reproposed", "agent:remediation",
-                             {"code": existing.code, "reason": existing.safety["reconsidered"], "wave": wave}, db=db)
+                             {"code": held.code, "reason": held.safety["reconsidered"], "wave": wave}, db=db)
                 new += 1
-            elif not existing:
+            elif live:
+                continue  # a fix for this bucket is already waiting for a decision or for execution
+            elif (rejected := [a for a in mine if a.approval_status == "REJECTED"]):
+                # The human rejected the only fix, but the verifier proves the bucket still leaks. Offer it again
+                # (a person can reject it again); never execute it without a fresh approval.
+                r = rejected[-1]
+                note = f"{r.code} was rejected, but verification {run.ref} proved {b} still serves data externally"
+                _add(db, inc.id, wave, action_type=r.action_type, target=r.target,
+                     problem=f"Verification {run.ref}: {b} still serves data to anonymous clients ({r.code} was rejected)",
+                     change=r.change, risk=r.risk, side_effects=r.side_effects, expected_outcome=r.expected_outcome,
+                     rollback_plan=r.rollback_plan, verification_requirement=r.verification_requirement,
+                     params=dict(r.params or {}), patch_diff=r.patch_diff, safety={**(r.safety or {}), "reconsidered": note})
+                new += 1
+            else:
                 _add(db, inc.id, wave, action_type="bucket.set_private", target=f"s3://{b}",
                      problem=f"Verification {run.ref}: {b} still serves data to anonymous clients",
                      change=f"`mc anonymous set none {b}`", risk="Low", side_effects="none observed",
@@ -202,32 +218,54 @@ def replan(ctx: Ctx, run_id: str) -> AgentOutput:
                      verification_requirement="External GET returns 403", params={"bucket": b}, safety={"result": "from verification evidence"})
                 new += 1
         if cached:
-            origin_codes = [a.code for a in actions if a.target in {f"s3://{b}" for b in buckets} and a.execution_status != "SUCCEEDED"]
-            _add(db, inc.id, wave, action_type="cdn.purge", target="cdn://cdn.meridian.sandbox",
-                 problem=f"Verification {run.ref}: the CDN edge still serves cached copies ({len(cached)} path(s))",
-                 change="Purge the cached paths via cdn-admin (after origins are private)",
-                 risk="Low: next request re-fetches from the (now private) origin and is denied",
-                 side_effects="Cold cache for these paths", expected_outcome="External GET of each path is denied by the origin",
-                 rollback_plan="None needed (cache refills only if the origin is public)",
-                 verification_requirement="External GET of every purged path returns a genuine 403 (cache MISS)",
-                 params={"paths": sorted(set(cached))}, depends_on=origin_codes, safety={"result": "N/A (cache)"})
-            new += 1
+            db.flush()
+            actions = db.execute(select(RemediationAction).where(RemediationAction.incident_id == inc.id)
+                                 .order_by(RemediationAction.code)).scalars().all()
+            origin_codes = [a.code for a in actions if a.target in {f"s3://{b}" for b in buckets} and is_open(a)]
+            paths = sorted(set(cached))
+            purges = [a for a in actions if a.action_type == "cdn.purge" and is_open(a)]
+            keep = next((a for a in purges if a.approval_status == "APPROVED"), purges[0] if purges else None)
+            if keep and (keep.approval_status != "APPROVED" or set(paths) <= set((keep.params or {}).get("paths", []))):
+                # Reuse the purge that is already waiting instead of stacking a new one per verification run.
+                if keep.approval_status != "APPROVED":
+                    keep.params = {"paths": sorted(set(paths) | set((keep.params or {}).get("paths", [])))}
+                    keep.problem = (f"Verification {run.ref}: the CDN edge still serves cached copies "
+                                    f"({len(keep.params['paths'])} path(s))")
+                keep.depends_on = origin_codes
+                chain.append(inc.id, "remediation.updated", "agent:remediation",
+                             {"code": keep.code, "verification": run.ref, "paths": keep.params.get("paths"),
+                              "depends_on": origin_codes}, db=db)
+            else:
+                keep = _add(db, inc.id, wave, action_type="cdn.purge", target="cdn://cdn.meridian.sandbox",
+                            problem=f"Verification {run.ref}: the CDN edge still serves cached copies ({len(paths)} path(s))",
+                            change="Purge the cached paths via cdn-admin (after origins are private)",
+                            risk="Low: next request re-fetches from the (now private) origin and is denied",
+                            side_effects="Cold cache for these paths", expected_outcome="External GET of each path is denied by the origin",
+                            rollback_plan="None needed (cache refills only if the origin is public)",
+                            verification_requirement="External GET of every purged path returns a genuine 403 (cache MISS)",
+                            params={"paths": paths}, depends_on=origin_codes, safety={"result": "N/A (cache)"})
+                new += 1
+            for a in purges:
+                if a is not keep and a.approval_status != "APPROVED":
+                    a.approval_status = "SUPERSEDED"
+                    chain.append(inc.id, "remediation.superseded", "agent:remediation",
+                                 {"code": a.code, "superseded_by": keep.code, "verification": run.ref}, db=db)
         inc.status = "AWAITING_APPROVAL"
     summary = ctx.summarise("remediation.summary", {"proposed": new, "wave": wave, "held": 0})
     return AgentOutput(summary=summary, confidence=0.9, data={"proposed": new, "wave": wave})
 
 
 def execute(ctx: Ctx) -> AgentOutput:
-    """Execute every APPROVED, not-yet-run action in code order (respecting dependencies)."""
+    """Execute every APPROVED, not-yet-run action, dependencies first."""
     done, failed, skipped = [], [], []
     with session_scope() as db:
         inc = db.get(Incident, ctx.incident_id)
         inc.status = "REMEDIATING"
-        todo = db.execute(select(RemediationAction).where(RemediationAction.incident_id == inc.id,
-                                                          RemediationAction.approval_status == "APPROVED",
-                                                          RemediationAction.execution_status.in_(["NOT_STARTED", "FAILED"]))
-                          .order_by(RemediationAction.code)).scalars().all()
-        ids = [a.id for a in todo]
+        every = db.execute(select(RemediationAction).where(RemediationAction.incident_id == inc.id)).scalars().all()
+        order, blocked = execution_plan(every)
+        by_code = {a.code: a for a in every}
+        # Dependencies first (a re-proposed fix can have a higher code than the purge that waits for it).
+        ids = [by_code[c].id for c in order] + [by_code[c].id for c in sorted(blocked)]
     for aid in ids:
         with session_scope() as db:
             a = db.get(RemediationAction, aid)
